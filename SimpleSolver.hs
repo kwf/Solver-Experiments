@@ -205,16 +205,16 @@ applyInertSet ty = do
   return (fixedPoint subst ty)
 
 pullTypeFamilies :: Type -> Solver (Type, [Canonical])
-pullTypeFamilies t =
-  case t of
-    TyFamApp (f, a) -> do
-      x <- freshSkolem
-      return (TyVar x, [CanTyFam (f, a) x])
-    TyApp a b -> do
-      (a', funcans1) <- pullTypeFamilies a
-      (b', funcans2) <- pullTypeFamilies b
-      return (TyApp a' b', funcans1 ++ funcans2)
-    _ -> return (t, [])
+pullTypeFamilies ty =
+  case ty of
+    TyFamApp (func, arg) -> do
+      a <- freshSkolem
+      return (TyVar a, [CanTyFam (func, arg) a])
+    TyApp constr arg -> do
+      (constr', funcans1) <- pullTypeFamilies constr
+      (arg', funcans2)    <- pullTypeFamilies arg
+      return (TyApp constr' arg', funcans1 ++ funcans2)
+    _ -> return (ty, [])
 
 zonk :: Type -> Solver Type
 zonk = return  -- right now, zonking is a no-op because we don't have IORef unification variables
@@ -253,7 +253,7 @@ canonicalize (t1 :=: t2) = do
           TyConst k' | k == k'   -> return []         -- two ground types are equal if they... are equal
           TyConst k' | otherwise -> thisIsATypeError  -- and they are not equal if they... are not
           TyVar b ->
-            return [CanTyVar b t1]         -- for k ~ a, flip it to make canonical
+            return [CanTyVar b t1]         -- for k ~ b, flip it to make canonical
           TyApp _ _ -> thisIsATypeError    -- k ~ _ _ is a type error
           TyFamApp tfa -> error $ "This should have been flattened!" ++ show tfa
       TyFamApp tfa -> error $ "This should have been flattened!" ++ show tfa
