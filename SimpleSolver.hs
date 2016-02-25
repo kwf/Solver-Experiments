@@ -6,6 +6,7 @@
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE ViewPatterns               #-}
+{-# LANGUAGE DeriveDataTypeable         #-}
 
 module SimpleSolver where
 
@@ -14,6 +15,17 @@ import Control.Monad.Except
 import Control.Arrow
 import Data.List
 
+import Text.Megaparsec hiding ( State, count )
+import Text.Megaparsec.String
+import Text.Megaparsec.Prim ( setPosition )
+import Text.Megaparsec.Pos
+
+import Language.Haskell.TH ( runIO, location, Loc(..) )
+import Language.Haskell.TH.Quote
+import Data.Data
+
+import System.IO
+
 -- Thoughts and musings so far...
 
 -- NOTE: What about occurs check in work items (T3)? I don't have it here yet.
@@ -21,7 +33,7 @@ import Data.List
 data Var = SrcVar String
          | FreshSkolem Integer
          | UnifVar Integer
-
+           
 data Type where
    TyConst :: Const -> Type
    TyVar :: Var -> Type
@@ -360,24 +372,6 @@ solveToDepth depth input =
 
 
 
-
--- EXAMPLE INPUTS
-
--- This loops the solver if addToWorkList is wrong
--- Note: Prepend New Work to the Work List
-ab_bc_ca :: [Equality]
-ab_bc_ca = [(TyVar (SrcVar "a")) :=: (TyVar (SrcVar "b")),
-            (TyVar (SrcVar "b")) :=: (TyVar (SrcVar "c")),
-            (TyVar (SrcVar "c")) :=: (TyVar (SrcVar "a"))]
-
--- This loops the solver if we process FunCans first
--- Note: Ordered Processing of Flattening Results
-f_int_bool :: [Equality]
-f_int_bool = [(TyFamApp (TyFam "F", TyConst (Const "Int")) :=: TyConst (Const "Bool"))]
-
-
-
-
 -- MISCELLANEOUS
 
 prepend :: [a] -> [a] -> [a]
@@ -398,6 +392,8 @@ padR :: Int -> String -> String
 padR n s
     | length s < n = replicate (n - length s) ' ' ++ s
     | otherwise    = s
+
+-- Pretty-printing the log of a solver run in an ASCII table
 
 formatHistory :: History -> [String]
 formatHistory history =
@@ -464,20 +460,88 @@ Everything else is auto-derived.
 
 -}
 
+-- PARSING
+
+-- We define a parser for [Equality] and a convenient quasi-quoter for it:
+-- For instance, [constraints| x ~ y, y ~ x |] desugars into
+-- [TyVar (SrcVar "x") :=: TyVar (SrcVar "y"), TyVar (SrcVar "y") :=: TyVar (SrcVar "x")]
+
+identifierStartingWith :: Parser Char -> Parser String
+identifierStartingWith parser =
+  ((:) <$> parser
+       <*> many (alphaNumChar <|> char '_'))
+
+parens, spaces :: Parser a -> Parser a
+parens = between (char '(') (char ')')
+spaces = between space space
+
+parseConst :: Parser Const
+parseConst = Const <$> identifierStartingWith upperChar
+
+parseVar :: Parser Var
+parseVar = SrcVar <$> identifierStartingWith lowerChar
+
+parseTyFam :: Parser TyFam
+parseTyFam = TyFam <$> identifierStartingWith upperChar
+
+parseType :: Parser Type
+parseType =
+  (foldl1 TyApp <$>) . flip sepEndBy space $
+    try (TyFamApp <$> ((,) <$> parseTyFam
+                           <*> parens (spaces parseType)))
+    <|> TyConst <$> parseConst
+    <|> TyVar <$> parseVar
+    <|> parens (spaces parseType)
+
+parseEquality :: Parser Equality
+parseEquality = do
+  [t1, t2] <- parseType `sepBy1` spaces (char '~')
+  return (t1 :=: t2)
+
+parseEqualities :: Parser [Equality]
+parseEqualities = parseEquality `sepEndBy` spaces (char ',')
+
+constraints :: QuasiQuoter
+constraints = QuasiQuoter
+           { quoteExp = \str -> do
+               Loc { loc_filename = file, loc_start = (row, col) } <- location
+               let pos = newPos file row col
+               c <- runIO $ parseIO (setPosition pos *> space *> parseEqualities) file str
+               dataToExpQ (const Nothing) c
+           , quotePat = undefined
+           , quoteType = undefined
+           , quoteDec = undefined }
+
+parseIO :: Parser a -> String -> String -> IO a
+parseIO parser file str =
+  case runParser parser file str of
+    Right a -> return a
+    Left err -> ioError (userError (show err))
+
+-- PRINTING
+-- We print things prettily; right now, we use Show for this.
+
 instance Show Var where
   show v = case v of
     SrcVar s -> s
     FreshSkolem i -> "[" ++ show i ++ "]"
     UnifVar i -> "{" ++ show i ++ "}"
 
-deriving instance Eq Var
-deriving instance Eq Type
+isCompound :: Type -> Bool
+isCompound t = case t of
+  TyApp _ _  -> True
+  TyFamApp _ -> True
+  _ -> False
+
+showWithParens :: Show a => Bool -> a -> String
+showWithParens True  a = "(" ++ show a ++ ")"
+showWithParens False a = show a
 
 instance Show Type where
   show t = case t of
     TyConst k -> show k
     TyVar v -> show v
-    TyApp t1 t2 -> show t1 ++ " " ++ show t2
+    TyApp t1 t2 -> show t1 ++ " " ++ showWithParens (isCompound t2) t2
     TyFamApp (f, a) -> show f ++ "(" ++ show a ++ ")"
 
 instance Show Const where
@@ -489,12 +553,21 @@ instance Show TyFam where
 instance Show Equality where
   show (t1 :=: t2) = show t1 ++ " ~ " ++ show t2
 
-deriving instance Eq Equality
-
 deriving instance Show SolverError
-deriving instance Eq SolverError
-
-deriving instance Eq Canonical
 
 instance Show Canonical where
   show = show . uncanonicalize
+
+-- Deriving Eq and Data for things...
+
+deriving instance Eq Var
+deriving instance Eq Type
+deriving instance Eq Equality
+deriving instance Eq SolverError
+deriving instance Eq Canonical
+
+deriving instance Data Var
+deriving instance Data Const
+deriving instance Data TyFam
+deriving instance Data Type
+deriving instance Data Equality
