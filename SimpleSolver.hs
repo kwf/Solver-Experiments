@@ -174,22 +174,22 @@ getInertSet =
   gets $ \((_, _, is), _) -> is
 
 applyCanonical :: Canonical -> Type -> Type
-applyCanonical c t =
-  case c of
-    CanTyVar v' t' ->
-      case t of
-        TyVar v | v == v'   -> t'
-        TyVar v | otherwise -> t
-        TyApp a b ->
-          TyApp (applyCanonical c a)
-                (applyCanonical c b)
-        TyFamApp (f, a) ->
-          TyFamApp $ (f, applyCanonical c a)
+applyCanonical canon ty =
+  case canon of
+    CanTyVar var' ty' ->
+      case ty of
+        TyVar var | var == var' -> ty'
+        TyVar var | otherwise   -> ty
+        TyApp constr arg ->
+          TyApp (applyCanonical canon constr)
+                (applyCanonical canon arg)
+        TyFamApp (func, arg) ->
+          TyFamApp $ (func, applyCanonical canon arg)
         TyConst k -> TyConst k
-    CanTyFam (f, a) r ->
-      case t of
-        TyFamApp (f', a') | f == f' && a == a' -> TyVar r
-        _ -> t
+    CanTyFam (func, arg) res ->
+      case ty of
+        TyFamApp (func', arg') | func == func' && arg == arg' -> TyVar res
+        _ -> ty
 
 fixedPoint :: Eq a => (a -> a) -> a -> a
 fixedPoint f =
@@ -350,10 +350,10 @@ shouldKickOut :: Canonical -> Canonical -> Bool
      ]
 
 kickOutWith :: Canonical -> Solver [Canonical]
-kickOutWith c = do
-  (kickedOut, newInertSet) <- partition (c `shouldKickOut`) <$> getInertSet
-  update $ \(i, wl, _) ->
-    (kickedOut, KickOutWith c, (i, wl, c : newInertSet))
+kickOutWith canon = do
+  (kickedOut, newInertSet) <- partition (canon `shouldKickOut`) <$> getInertSet
+  update $ \(i, worklist, _) ->
+    (kickedOut, KickOutWith canon, (i, worklist, canon : newInertSet))
 
 solverStep :: Equality -> Solver ()
 solverStep equality =
@@ -501,16 +501,16 @@ parseEquality = do
 parseEqualities :: Parser [Equality]
 parseEqualities = parseEquality `sepEndBy` spaces (char ',')
 
-constraints :: QuasiQuoter
-constraints = QuasiQuoter
-           { quoteExp = \str -> do
-               Loc { loc_filename = file, loc_start = (row, col) } <- location
-               let pos = newPos file row col
-               c <- runIO $ parseIO (setPosition pos *> space *> parseEqualities) file str
-               dataToExpQ (const Nothing) c
-           , quotePat = undefined
-           , quoteType = undefined
-           , quoteDec = undefined }
+c :: QuasiQuoter
+c = QuasiQuoter
+  { quoteExp = \str -> do
+      Loc { loc_filename = file, loc_start = (row, col) } <- location
+      let pos = newPos file row col
+      equalities <- runIO $ parseIO (setPosition pos *> space *> parseEqualities <* eof) file str
+      dataToExpQ (const Nothing) equalities
+  , quotePat = undefined
+  , quoteType = undefined
+  , quoteDec = undefined }
 
 parseIO :: Parser a -> String -> String -> IO a
 parseIO parser file str =
