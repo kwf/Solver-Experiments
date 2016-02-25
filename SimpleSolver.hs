@@ -33,7 +33,7 @@ import System.IO
 data Var = SrcVar String
          | FreshSkolem Integer
          | UnifVar Integer
-           
+
 data Type where
    TyConst :: Const -> Type
    TyVar :: Var -> Type
@@ -217,7 +217,7 @@ pullTypeFamilies t =
     _ -> return (t, [])
 
 zonk :: Type -> Solver Type
-zonk = return
+zonk = return  -- right now, zonking is a no-op because we don't have IORef unification variables
 
 flatten :: Type -> Solver (Type, [Canonical])
 flatten =
