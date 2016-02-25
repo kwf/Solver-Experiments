@@ -141,8 +141,8 @@ putting the new work item(s) at the *end* of the work list.)
 +------------------------------------------+-----------------------+-------------+
 |   1.  AddToWorkList [a ~ b,b ~ c,c ~ a]  |  a ~ b, b ~ c, c ~ a  |             |
 |   2.  NextWorkItem a ~ b                 |  b ~ c, c ~ a         |             |
-|   3.  KickOutWith a ~ b                  |  b ~ c, c ~ a         |  a ~ b      |  <--- look at the state here
-|   4.  AddToWorkList []                   |  b ~ c, c ~ a         |  a ~ b      |
+|   3.  KickOutWith a ~ b                  |  b ~ c, c ~ a         |  a ~ b      |
+|   4.  AddToWorkList []                   |  b ~ c, c ~ a         |  a ~ b      |  <--- look at the state here
 |   5.  NextWorkItem b ~ c                 |  c ~ a                |  a ~ b      |
 |   6.  KickOutWith b ~ c                  |  c ~ a                |  b ~ c      |
 |   7.  AddToWorkList [a ~ b]              |  c ~ a, a ~ b         |  b ~ c      |
