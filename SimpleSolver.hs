@@ -29,6 +29,8 @@ import System.IO
 -- Thoughts and musings so far...
 
 -- NOTE: What about occurs check in work items (T3)? I don't have it here yet.
+-- NOTE: Drop type family support?
+-- NOTE: Don't kick out too much!
 
 data Var = SrcVar String
          | FreshSkolem Integer
