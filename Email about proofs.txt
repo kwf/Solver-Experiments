@@ -1,0 +1,86 @@
+Slightly revised version (no change of actual content).  Note that (K2) and (K3') are very similar; they share common conditions.  Can we combine them?
+
+--------- Proposal --------------------
+
+* Replace bogus (IG2) with a new unrelated (IG2') that
+  embodies completeness
+    (IG2') for every (b -f-> s) in S, S*(f, s) /= b
+  That is, no element of S can be rewritten to Refl by S
+  If there was such an element, we will just discard it.
+
+  Looking at Example 2, notice that (IG2') is false of this set
+    a -W-> b
+    b -G-> a
+  So we must kick out the Wanted, as desired
+
+* Replace the old (K3) with (K3'):
+  Recall that the work item is: a -fw-> t
+  (K3') For every (b -fs-> s) in S, b /= a
+        (K3'a) s is not a type variable
+     or (K3'b) t /= b
+     or (K2'c) fs >= fw         c.f. K2b
+     or (K3'd) not (fw >= fs)   c.f. K2c
+
+  NB: we can't insist the that inert is of form
+    b -fs-> a, because of Example 3
+
+
+Claim: The main theorem holds assumming (IG1, IG2'), (T1-3), (K1-2), (K3')
+       and proving (IG1), (IG2') of the extended substitition
+
+
+NB: a simpler story is to kick out all Wanteds when you add a Given
+When adding a -fw-> t, kick out (b -fs-> s) unless
+   not (fw >= fs) or (fs >= fw)
+
+--------- Examples --------------------
+
+Example 1
+
+   work-item   b -G-> a
+   inert-item  b -W-> a
+
+Then we kick out the inert item by K1, and all is good
+
+------------------
+Example 2: completeness
+
+   work-item   b -G-> a
+   inert-item  a -W-> b
+
+Here we must kick out the inert item to get completeness,
+becuase it will then rewrite to a~a and be solved by Refl.
+This is not covered by (K1) or (K2)
+
+-----------------
+Example 3: a more complicated variant of Example 2
+
+  Work item: b -G-> a
+
+  Inert:     a -W-> d
+             d -G-> b
+
+Must kick out the wanted:
+
+  work item: a -W-> d
+  inerts:    b -G-> a
+             d -G-> b
+
+Now we can rewrite the work item to Refl.
+
+----------------
+Example 4: Kenny's example
+
+  Work list:  c -G-> a
+  work item:  b -G-> c
+  inert:      a -G-> b
+
+If we kick out the inert, and
+put the work item in work list:
+
+  Work list:  a -G-> b
+  work item:  c -G-> a
+  inert:      b -G-> c
+
+LOOP!
+
