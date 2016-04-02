@@ -1,0 +1,91 @@
+% LaTeX
+\documentclass[10pt, letterpaper, oneside]{article}
+\usepackage{amsfonts, amsmath, amssymb, amsthm, enumitem, graphicx, hanging, ifthen, lettrine, listings, microtype, multirow, natbib, pdfpages, rotating, scalefnt, setspace, textcomp, verbatim, xcolor, xspace}
+\usepackage[utf8]{inputenc}\usepackage[T1]{fontenc}
+% \usepackage{mathpazo}\usepackage{tgpagella}\usepackage[scaled]{luximono}
+\usepackage[unicode=true,pdfusetitle,bookmarks=true,bookmarksnumbered=true,bookmarksopen=false,breaklinks=false,pdfborder={0 0 0},backref=false,colorlinks=false]{hyperref}
+
+\pagestyle{plain}%\onehalfspacing
+%\usepackage[margin=1in]{geometry}
+
+\title{Constraint Solver Thoughts}
+\author{Kenny Foner}
+\date{\today}
+
+\newcommand{\given}  {\textsc{given} \xpsace}
+\newcommand{\wanted} {\textsc{wanted}\xspace}
+\newcommand{\derived}{\textsc{derived}\xspace}
+
+\newcommand{\fv}{\mathrm{fv}}
+
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{corollary}{Corollary}[theorem]
+\newtheorem{lemma}[theorem]{Lemma}
+
+\begin{document}
+\maketitle
+
+\section{Introduction}
+
+This document is about figuring out how to show that GHC's internal constraint solver does what we all want it to do: the \emph{right thing}. In the process, we'll figure out what we mean by ``the right thing,'' formalize what it is that the existing solver actually does, and (hopefully) prove that these two things are equivalent. I'm writing in a deliberately half-informal style because that's what comes out of my head with least effort, and also, forcing myself to give intuition for what I'm saying is good for everybody involved.
+
+\section{What Are Things?}
+
+\subsection{What is a constraint solver?}
+
+When in the course of computational events it becomes necessary for one typechecker to figure out whether or not all the types agree in a program, we can use a constraint solver to determine an answer. Constraint-directed typechecking approaches separate typechecking into two phases: constraint \emph{generation} and constraint \emph{solving}.
+
+First, we \emph{generate} a set of constraints by processing the program and its annotations. There are two kinds of constraints we discover in this process: \given constraints---things we know are true---and \wanted constraints---things we need to be true for a program to typecheck. A piece of code \(f\) that is only type-correct under a certain constraint \(c\) has \(c\) as a \given constraint when we typecheck its insides. A piece of code calling \(f\) will have \(c\) as a \wanted constraint.
+
+What kinds of ``things'' can constraints talk about? In GHC, a lot of things: type equalities, but also typeclass instances, type family equations, functional dependencies, and more. To simplify the initial discussion, we'll focus for right now on just a treatment of type equalities. That is to say, every constraint we consider here is of the form \(\tau \sim \sigma\), where \(\tau\) and \(\sigma\) are types and \(\sim\) is nominal type equality. (We will extend this treatment to representational equality later, but not now.)
+
+Second, we \emph{solve} the constraint sets we generated. A successful solution to a constraint solving problem means that we can deduce that the conjunction of all the given constraints implies each wanted constraint. Algorithms like the one in GHC do this in an iterative, stateful way. When we find out that a \wanted constraint is satisfied, we remove it from consideration. (We elide here a discussion of producing evidence for equalities, which is another important function of the constraint solver but is not essential to a discussion of equality constraints.) A successful run of the solver means that we terminate in a state where we no longer have any \wanted constraints left to solve. An unsuccessful run of the solver means that we terminate, having discovered that one or more {\wanted}s are unsatisfiable.
+
+\textbf{Aside:} Additionally, we put in a good-faith effort to detect contradictions in the set of \given constraints, because this gives the user earlier warning that they have written nonsense---but we will never run unsound code if we fail to report such contradictions, since code with unsatisfiable preconditions can never be run.
+
+\subsection{Doing the right thing}
+
+I claim that a constraint solver does the right thing if, for all inputs, it
+\begin{itemize}
+\item rejects if any \wanted constraints are unsatisfiable \textbf{[soundness]}
+\item accepts if all \wanted constraints are satisfiable \textbf{[completeness]}
+\item always finishes processing in bounded time \textbf{[termination]}
+\end{itemize}
+
+We shall try to prove that these properties hold for (some model of) GHC's constraint solver.
+
+\subsection{Substitutions}
+
+Constraint solvers like GHC's process an input set of constraints by iteratively constructing a \emph{substitution} over types. For reasons that will become apparent later, this is called the \emph{inert set}.
+
+A \emph{substitution} is, abstractly, a total function from \emph{type variables} to \emph{types}. We can lift a substitution to be a function from \emph{types} to \emph{types} by uniformly applying it to every type variable in a given type. We will abuse notation in this way, by writing for a substitution \(S\) both \(S(\alpha)\) and \(S(\tau)\).
+
+Substitutions can have various properties which are of interest to us in this discussion. To distinguish between equality of \emph{representations} of substitutions and \emph{extensional} equality of substitutions-as-functions, we write \(=\) for the former and \(\approx\) for the latter. That is, \(S \approx T \triangleq \forall \alpha, S(\alpha) = T(\alpha)\). (Here, equality on types is exact syntactic equality, with no notion of \(\alpha\)-equivalence.)
+
+\begin{description}
+\item[Finitude:] \(S\) is finite if \(\{\alpha \mid S(\alpha) \ne \alpha\}\) is finite (that is, \(S\) is the identity on all but finitely many type \emph{variables}---but may still be non-identity on infinitely many \emph{types})
+\item[Acyclicity:] \(S\) is acyclic if \(\forall \alpha, S(\alpha) \ne \alpha \to \forall n, \alpha \notin \fv(S^n(\alpha))\)
+\item[Weak fixed point:] \(S\) has a weak fixed point if \(\forall \alpha, \exists n, S^n(\alpha) = S^{n + 1}(\alpha)\)
+\item[Strong fixed point:] \(S\) has a strong fixed point if \(\exists n, \forall \alpha, S^n(\alpha) = S^{n + 1}(\alpha)\) (an equivalent statement to \(\exists n, S^n \approx S^{n + 1}\))
+\item[Idempotence:] \(S\) is idempotent if \(S \approx S \circ S\)
+\end{description}
+
+\begin{lemma}
+  Strong and weak fixed points are equivalent for finite substitutions.
+\end{lemma}
+
+\begin{proof}
+  We first show that if a substitution \(S\) has a strong fixed point, it has weak fixed points. This follows immediately from the observation \(\exists x, \forall y, P(x,y) \to \forall y, \exists x, P(x,y)\)---that is, it is trivial to push existential quantification under universal quantification (but not vice versa, of course).
+
+  Now we must show that a weak fixed point implies the existence of a strong fixed point if the substitution is finite. We show this by taking a maximum over the number of iterations required to reach a fixed point for any given type variable. First, observe that for all reflexively-mapped type variables in the domain of \(S\), we need apply \(S\) zero times to reach a fixed point. We therefore consider only those variables not mapped to themselves in \(S\). Because \(S\) is finite, the set \(\{\alpha \mid S(\alpha) \ne \alpha\}\) is finite. For each \(\alpha\) in this set, there exists some \(n\) for which \(S^n(\alpha) = S^{n + 1}(\alpha)\), and by the well-ordering principle, there exists some unique smallest \(n\) for which this property holds. The maximum of all these numbers must also be a fixed point for any particular \(\alpha\), as the maximum is definitionally greater than or equal to the number of iterations needed to reach a fixed point for that type variable.
+\end{proof}
+
+\begin{lemma}
+  
+\end{lemma}
+
+\section{What Does GHC Do?}
+
+Conceptually, this is what happens during solving: When we encounter a \given constraint, we add it to the inert set, so as to capture its information about equalities. When we encounter a \wanted constraint
+
+\end{document}
