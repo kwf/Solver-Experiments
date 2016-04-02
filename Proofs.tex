@@ -30,9 +30,7 @@
 
 This document is about figuring out how to show that GHC's internal constraint solver does what we all want it to do: the \emph{right thing}. In the process, we'll figure out what we mean by ``the right thing,'' formalize what it is that the existing solver actually does, and (hopefully) prove that these two things are equivalent. I'm writing in a deliberately half-informal style because that's what comes out of my head with least effort, and also, forcing myself to give intuition for what I'm saying is good for everybody involved.
 
-\section{What Are Things?}
-
-\subsection{What is a constraint solver?}
+\section{What is a Constraint Solver?}
 
 When in the course of computational events it becomes necessary for one typechecker to figure out whether or not all the types agree in a program, we can use a constraint solver to determine an answer. Constraint-directed typechecking approaches separate typechecking into two phases: constraint \emph{generation} and constraint \emph{solving}.
 
@@ -40,11 +38,9 @@ First, we \emph{generate} a set of constraints by processing the program and its
 
 What kinds of ``things'' can constraints talk about? In GHC, a lot of things: type equalities, but also typeclass instances, type family equations, functional dependencies, and more. To simplify the initial discussion, we'll focus for right now on just a treatment of type equalities. That is to say, every constraint we consider here is of the form \(\tau \sim \sigma\), where \(\tau\) and \(\sigma\) are types and \(\sim\) is nominal type equality. (We will extend this treatment to representational equality later, but not now.)
 
-Second, we \emph{solve} the constraint sets we generated. A successful solution to a constraint solving problem means that we can deduce that the conjunction of all the given constraints implies each wanted constraint. Algorithms like the one in GHC do this in an iterative, stateful way. When we find out that a \wanted constraint is satisfied, we remove it from consideration. (We elide here a discussion of producing evidence for equalities, which is another important function of the constraint solver but is not essential to a discussion of equality constraints.) A successful run of the solver means that we terminate in a state where we no longer have any \wanted constraints left to solve. An unsuccessful run of the solver means that we terminate, having discovered that one or more {\wanted}s are unsatisfiable.
+Second, we \emph{solve} the constraint sets we generated. A successful solution to a constraint solving problem means that we can deduce that the conjunction of all the given constraints implies each wanted constraint. Algorithms like the one in GHC do this in an iterative, stateful way. When we find out that a \wanted constraint is satisfied, we remove it from consideration. (We elide here a discussion of producing evidence for equalities, which is another important function of the constraint solver but is not essential to a discussion of equality constraints.) A successful run of the solver means that we terminate in a state where we no longer have any \wanted constraints left to solve. An unsuccessful run of the solver means that we terminate, having discovered that one or more {\wanted}s are unsatisfiable.\\
 
-\textbf{Aside:} Additionally, we put in a good-faith effort to detect contradictions in the set of \given constraints, because this gives the user earlier warning that they have written nonsense---but we will never run unsound code if we fail to report such contradictions, since code with unsatisfiable preconditions can never be run.
-
-\subsection{Doing the right thing}
+\textbf{Aside:} Additionally, we would like to put in a good-faith effort to detect contradictions in the set of \given constraints, because this gives the user earlier warning that they have written nonsense---but we will never run unsound code if we fail to report such contradictions, since code with unsatisfiable preconditions can never be run.\\
 
 I claim that a constraint solver does the right thing if, for all inputs, it
 \begin{itemize}
@@ -55,7 +51,7 @@ I claim that a constraint solver does the right thing if, for all inputs, it
 
 We shall try to prove that these properties hold for (some model of) GHC's constraint solver.
 
-\subsection{Substitutions}
+\section{Substitutions}
 
 Constraint solvers like GHC's process an input set of constraints by iteratively constructing a \emph{substitution} over types. For reasons that will become apparent later, this is called the \emph{inert set}.
 
@@ -96,7 +92,8 @@ Substitutions can have various properties which are of interest to us in this di
 \end{proof}
 
 \begin{corollary}
-  For every finite acyclic substitution \(S\), we can construct an idempotent substitution \(S^\ast\) equivalent to the least fixed point of \(S\).
+  \label{corollary:idempotize}
+  For every finite acyclic substitution \(S\), we can construct an idempotent substitution \(S^\ast\) equivalent to the least fixed point of \(S\), where \(S^\ast = S^{|\{\alpha \mid S(\alpha) \ne \alpha\}|}\).
 \end{corollary}
 
 \begin{proof}
@@ -106,6 +103,28 @@ Substitutions can have various properties which are of interest to us in this di
 \section{Representing Substitutions}
 
 In a constraint solving algorithm, it is useful to represent substitutions not as abstract functions, but as concrete finite sets of ``atomic'' equational rewrites.
+
+We define an \emph{atomic rewrite} to be a pair \((\alpha, \tau)\) of a type variable and a type. A \emph{concrete substitution} is a set \(C\) of atomic rewrites which is function-like, in that \(\forall\, (\alpha, \tau),\,(\beta, \sigma) \in C, \alpha = \beta \to \tau = \sigma\). We may treat \(C\) as a total function on type variables as follows:
+
+\begin{equation*}
+  C(\alpha) =
+  \begin{cases}
+    \tau & \exists!\, \tau, (\alpha, \tau) \in C\\
+    \alpha & \textrm{otherwise}
+  \end{cases}
+\end{equation*}
+
+Like our abstract treatment of substitutions, we may also lift this total function on type variables to one on types.
+
+We will use properties like ``acyclic,'' ``idempotent,'' etc. freely when discussing concrete substitutions. These statements should be interpreted to refer to the functional interpretation of the substitution.
+
+\begin{corollary}
+  If \(C\) is acyclic, then \(C^{|C|}\) is idempotent.
+\end{corollary}
+
+\begin{proof}
+  By the above definition of the functional interpretation of \(C\), the number of type variables on which \(C\) is not the identity is at most \(|C|\). By Corollary~\ref{corollary:idempotize}, the substitution \(C^{|C|}\) is thus idempotent.
+\end{proof}
 
 \section{What Does GHC Do?}
 
