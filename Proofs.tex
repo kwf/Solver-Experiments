@@ -18,9 +18,10 @@
 
 \newcommand{\fv}{\mathrm{fv}}
 
-\newtheorem{theorem}{Theorem}[section]
-\newtheorem{corollary}{Corollary}[theorem]
-\newtheorem{lemma}[theorem]{Lemma}
+\usepackage{thmtools}
+\declaretheorem[numberwithin=section]{theorem}
+\declaretheorem[numberwithin=section, sibling=theorem]{lemma}
+\declaretheorem[numberwithin=section, sibling=theorem]{corollary}
 
 \begin{document}
 \maketitle
@@ -64,13 +65,14 @@ Substitutions can have various properties which are of interest to us in this di
 
 \begin{description}
 \item[Finitude:] \(S\) is finite if \(\{\alpha \mid S(\alpha) \ne \alpha\}\) is finite (that is, \(S\) is the identity on all but finitely many type \emph{variables}---but may still be non-identity on infinitely many \emph{types})
-\item[Acyclicity:] \(S\) is acyclic if \(\forall \alpha, S(\alpha) \ne \alpha \to \forall n, \alpha \notin \fv(S^n(\alpha))\)
+\item[Acyclicity:] \(S\) is acyclic if \(\forall \alpha, S(\alpha) \ne \alpha \to \forall n > 0, \alpha \notin \fv(S^n(\alpha))\)
 \item[Weak fixed point:] \(S\) has a weak fixed point if \(\forall \alpha, \exists n, S^n(\alpha) = S^{n + 1}(\alpha)\)
 \item[Strong fixed point:] \(S\) has a strong fixed point if \(\exists n, \forall \alpha, S^n(\alpha) = S^{n + 1}(\alpha)\) (an equivalent statement to \(\exists n, S^n \approx S^{n + 1}\))
 \item[Idempotence:] \(S\) is idempotent if \(S \approx S \circ S\)
 \end{description}
 
 \begin{lemma}
+  \label{lemma:strong-weak}
   Strong and weak fixed points are equivalent for finite substitutions.
 \end{lemma}
 
@@ -81,8 +83,29 @@ Substitutions can have various properties which are of interest to us in this di
 \end{proof}
 
 \begin{lemma}
-  
+  \label{lemma:finite-acyclic-strong}
+  A finite substitution is acyclic iff it has a strong fixed point.
 \end{lemma}
+
+\begin{proof}
+  For an acyclic finite substitution \(S\), consider the set of type variables \(V\) on which \(S\) ``acts,'' \(V = \{\alpha \mid S(\alpha) \ne \alpha\}\). We show by induction that for a given \(\alpha \in V\), the greatest \(n\) for which \(S^n(\alpha) \ne S^{n + 1}(\alpha)\) is at most \(|V|\), which immediately gives us the strong fixed point property.
+
+  By acyclicity, we know that for any \(\alpha \in V\), \(\alpha\) will not be present in the free variables of \(S^n(\alpha)\), for any \(n\) we choose. Thus, \(S^{n + 1}(\alpha)\) must be equivalent to \((S[\alpha \mapsto \alpha])^n(S(\alpha))\), since acyclicity tells us that \(\alpha\) will not be encountered again after we substitute for it. For all \(\alpha \in V\), \(S[\alpha \mapsto \alpha]\) acts on exactly one fewer variable: \(\alpha\). Thus, every application of \(S\) leaves one less potential variable to be rewritten, and since \(V\) is finite, we will run out of variables to rewrite in at most \(|V|\) steps.
+
+  To prove the reverse direction, consider a finite substitution which contains a cycle on a type variable \(\alpha\). This means that \(S(\alpha) \ne \alpha\) and for some \(m > 0\), \(S^m(\alpha)\) mentions \(\alpha\). Assuming that \(S\) has a strong fixed point of size \(n\), it must be that \(S^{nm}(\alpha) = S^{nm + 1}(\alpha)\). But we know that \((S^{nm}(\alpha)\) must mention \(\alpha\), by the uniform way that we lift substitutions over types. And because \(S(\alpha) \ne \alpha\), \(S^{nm}(\alpha) \ne S^{nm + 1}(\alpha)\), a contradiction.
+\end{proof}
+
+\begin{corollary}
+  For every finite acyclic substitution \(S\), we can construct an idempotent substitution \(S^\ast\) equivalent to the least fixed point of \(S\).
+\end{corollary}
+
+\begin{proof}
+  By Lemma~\ref{lemma:finite-acyclic-strong}, a finite acyclic substitution \(S\) has a strong fixed point---that is, there is some \(n\) such that \(S^n \approx S^{n + 1}\). This fixed point is definitionally idempotent. Moreover, the argument in Lemma~\ref{lemma:finite-acyclic-strong} tells us that \(n \le |V|\) where \(V = \{\alpha \mid S(\alpha) \ne \alpha\}\). As a result, we can construct an idempotent substitution \(S^\ast \triangleq S^{|V|}\) which is extensionally equal to the least fixed point of \(S\).
+\end{proof}
+
+\section{Representing Substitutions}
+
+In a constraint solving algorithm, it is useful to represent substitutions not as abstract functions, but as concrete finite sets of ``atomic'' equational rewrites.
 
 \section{What Does GHC Do?}
 
