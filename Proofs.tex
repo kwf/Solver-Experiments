@@ -139,4 +139,14 @@ When we encounter a new canonical \given constraint, we wish to add it to the in
 % K2: trivial
 % K3: for all b, no (b |-> a) in I.S. [kick it out]
 
+% So we have that:
+% a is not ``acted on'' by existing I.S. (I.S. maps a |-> a) [T1]
+% no tyvar in t is ``acted on'' by existing I.S. [T2]
+% a \notin fv(t) [T3]
+% the resultant I.S. is still functional [K1]
+% do we really need K3 at all?
+
+% All potential long cycles get squished by T2 into loops in the input rewrite
+% 
+
 \end{document}
