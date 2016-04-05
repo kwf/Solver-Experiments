@@ -84,11 +84,11 @@ Substitutions can have various properties which are of interest to us in this di
 \end{lemma}
 
 \begin{proof}
-  For an acyclic finite substitution \(S\), consider the set of type variables \(V\) on which \(S\) ``acts,'' \(V = \{\alpha \mid S(\alpha) \ne \alpha\}\). We show by induction that for a given \(\alpha \in V\), the greatest \(n\) for which \(S^n(\alpha) \ne S^{n + 1}(\alpha)\) is at most \(|V|\), which immediately gives us the strong fixed point property.
+  In the forward direction, we consider the set of type variables \(V\) on which an acyclic finite substitution \(S\) ``acts,'' \(V = \{\alpha \mid S(\alpha) \ne \alpha\}\). We show by induction that for a given \(\alpha \in V\), the greatest \(n\) for which \(S^n(\alpha) \ne S^{n + 1}(\alpha)\) is at most \(|V|\), which immediately gives us the strong fixed point property.
 
-  By acyclicity, we know that for any \(\alpha \in V\), \(\alpha\) will not be present in the free variables of \(S^n(\alpha)\), for any \(n\) we choose. Thus, \(S^{n + 1}(\alpha)\) must be equivalent to \((S[\alpha \mapsto \alpha])^n(S(\alpha))\), since acyclicity tells us that \(\alpha\) will not be encountered again after we substitute for it. For all \(\alpha \in V\), \(S[\alpha \mapsto \alpha]\) acts on exactly one fewer variable: \(\alpha\). Thus, every application of \(S\) leaves one less potential variable to be rewritten, and since \(V\) is finite, we will run out of variables to rewrite in at most \(|V|\) steps.
+  By acyclicity, we know that for any \(\alpha \in V\), \(\alpha\) will not be present in the free variables of \(S^n(\alpha)\), for any \(n\) we choose. Thus, \(S^{n + 1}(\alpha)\) must be equivalent to \((S[\alpha \mapsto \alpha])^n(S(\alpha))\), since acyclicity tells us that \(\alpha\) will not be encountered again after we substitute for it.\footnote{A note on notation: we write \(S[\alpha \mapsto \tau]\) to denote the function equal to \(S(\beta)\) when \(\beta \ne \alpha\), and equal to \(\tau\) when \(\beta = \alpha\).} For all \(\alpha \in V\), \(S[\alpha \mapsto \alpha]\) acts on exactly one fewer variable: \(\alpha\). Thus, every application of \(S\) leaves one less potential variable to be rewritten, and since \(V\) is finite, we will run out of variables to rewrite in at most \(|V|\) steps.
 
-  To prove the reverse direction, consider a finite substitution which contains a cycle on a type variable \(\alpha\). This means that \(S(\alpha) \ne \alpha\) and for some \(m > 0\), \(S^m(\alpha)\) mentions \(\alpha\). Assuming that \(S\) has a strong fixed point of size \(n\), it must be that \(S^{nm}(\alpha) = S^{nm + 1}(\alpha)\). But we know that \((S^{nm}(\alpha)\) must mention \(\alpha\), by the uniform way that we lift substitutions over types. And because \(S(\alpha) \ne \alpha\), \(S^{nm}(\alpha) \ne S^{nm + 1}(\alpha)\), a contradiction.
+  In the reverse direction, we consider a finite substitution that contains a cycle on a type variable \(\alpha\). This means that \(S(\alpha) \ne \alpha\) and for some \(m > 0\), \(S^m(\alpha)\) mentions \(\alpha\). We therefore know that \(S^{nm}(\alpha)\) must mention \(\alpha\), because of this \(m\)-length cycle on \(\alpha\). And since we further assumed that \(S(\alpha) \ne \alpha\), we know \(S^{nm}(\alpha) \ne S^{nm + 1}(\alpha)\). But since \(S\) supposedly has a strong fixed point of size \(n\), it must be that \(S^{nm}(\alpha) = S^{nm + 1}(\alpha)\), a contradiction.
 \end{proof}
 
 \begin{corollary}
@@ -126,8 +126,17 @@ We will use properties like ``acyclic,'' ``idempotent,'' etc. freely when discus
   By the above definition of the functional interpretation of \(C\), the number of type variables on which \(C\) is not the identity is at most \(|C|\). By Corollary~\ref{corollary:idempotize}, the substitution \(C^{|C|}\) is thus idempotent.
 \end{proof}
 
-\section{What Does GHC Do?}
+\section{Augmenting Concrete Substitutions}
 
-Conceptually, this is what happens during solving: When we encounter a \given constraint, we add it to the inert set, so as to capture its information about equalities. When we encounter a \wanted constraint
+One way of making a constraint solver is to build up a canonical concrete substitution (the \emph{inert set}) as we process input constraints. Arbitrary constraints are first canonicalized, which in the case of equality constraints transforms them into \emph{atomic rewrites}. We proceed structurally over types, using generativity/injectivity to split apart type constructor applications. For instance: the initial constraint \(\alpha\, \beta \sim \delta\, \gamma\) would be decomposed into \([\alpha \sim \delta,\, \beta \sim \gamma]\). At this point, we discover some impossible constraints, as we can rule out anything that equates a type constructor application with a constant.
+
+When we encounter a new canonical \given constraint, we wish to add it to the inert set. However, we must first ensure that doing so preserves key properties of the inert set: it must continue to be a concrete substitution (that is, functional) with a strong fixed point. We know by Lemma~\ref{lemma:finite-acyclic-strong} that this property is equivalent to acyclicity for finite substitutions. We present a sufficient set of criteria which together protect the inert set from problematic augmentation.
+
+% When inserting the GIVEN (a |-> t):
+% T1, T2: apply I.S. to work item's sides [always succeeds]
+% T3: occurs check on work item [fail immediately]
+% K1: for all s, no (a |-> s) in I.S. [kick it out]
+% K2: trivial
+% K3: for all b, no (b |-> a) in I.S. [kick it out]
 
 \end{document}
