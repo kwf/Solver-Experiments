@@ -147,6 +147,24 @@ When we encounter a new canonical \given constraint, we wish to add it to the in
 % do we really need K3 at all?
 
 % All potential long cycles get squished by T2 into loops in the input rewrite
-% 
+
+% S has n-fixed-point ==>
+% S^n . Id[a |-> t] . S^n = (S[a |-> t])^(2n + 1)
+
+% Non-reflexive can-rewrite: an equality that can't be composed w/ itself????
+
+For a given ``work item'' \((\alpha \sim \tau)\), we may insert it into the inert set \(S\) if:
+
+\begin{description}
+\item[(T1)] \(S^\ast(\alpha) = \alpha\)
+\item[(T2)] \(S^\ast(\tau) = \tau\)
+\item[(T3)] \(\alpha \notin \fv(\tau)\)
+\end{description}
+
+We show that if these conditions are met, an insert set \(S[\alpha \mapsto \tau]\) is still acyclic, and thus has a strong fixed point.
+
+\begin{proof}
+  Suppose not, that while \(S\) is acyclic and T1, T2 hold of \((\alpha \sim \tau)\), there is a cycle in \(S[\alpha \mapsto \tau]\). Any such cycle must involve the atomic substitution \(\alpha \mapsto \tau\), as otherwise it would exist in \(S\). This means that there must be a cycle on \(\alpha\). By T3, we know that such a cycle requires some free variable in \(\tau\) to be mapped by \(S^\ast\) to a type with \(\alpha\) as a free variable. Yet by T2, we know that \(S^\ast\) is the identity on \(\tau\), which means that it cannot map any variable in \(\tau\) to \(\alpha\).
+\end{proof}
 
 \end{document}
