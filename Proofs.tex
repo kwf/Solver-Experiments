@@ -12,16 +12,17 @@
 \author{Kenny Foner}
 \date{\today}
 
-\newcommand{\given}  {\textsc{given} \xpsace}
-\newcommand{\wanted} {\textsc{wanted}\xspace}
-\newcommand{\derived}{\textsc{derived}\xspace}
+\newcommand{\I}{\text{I}}
+\newcommand{\process}{\text{\bf process}}
+\newcommand{\return}{\text{\bf return}}
+\newcommand{\error}{\text{\bf error}}
 
 \newcommand{\fv}{\mathrm{fv}}
 
 \usepackage{thmtools}
 \declaretheorem[numberwithin=section]{theorem}
-\declaretheorem[numberwithin=section, sibling=theorem]{lemma}
-\declaretheorem[numberwithin=section, sibling=theorem]{corollary}
+\declaretheorem[sibling=theorem]{lemma}
+\declaretheorem[sibling=theorem]{corollary}
 
 \begin{document}
 \maketitle
@@ -34,18 +35,18 @@ This document is about figuring out how to show that GHC's internal constraint s
 
 When in the course of computational events it becomes necessary for one typechecker to figure out whether or not all the types agree in a program, we can use a constraint solver to determine an answer. Constraint-directed typechecking approaches separate typechecking into two phases: constraint \emph{generation} and constraint \emph{solving}.
 
-First, we \emph{generate} a set of constraints by processing the program and its annotations. There are two kinds of constraints we discover in this process: \given constraints---things we know are true---and \wanted constraints---things we need to be true for a program to typecheck. A piece of code \(f\) that is only type-correct under a certain constraint \(c\) has \(c\) as a \given constraint when we typecheck its insides. A piece of code calling \(f\) will have \(c\) as a \wanted constraint.
+First, we \emph{generate} a set of constraints by processing the program and its annotations. There are two kinds of constraints we discover in this process: \textsc{given} constraints---things we know are true---and \textsc{wanted} constraints---things we need to be true for a program to typecheck. A piece of code \(f\) that is only type-correct under a certain constraint \(c\) has \(c\) as a \textsc{given} constraint when we typecheck its insides. A piece of code calling \(f\) will have \(c\) as a \textsc{wanted} constraint.
 
 What kinds of ``things'' can constraints talk about? In GHC, a lot of things: type equalities, but also typeclass instances, type family equations, functional dependencies, and more. To simplify the initial discussion, we'll focus for right now on just a treatment of type equalities. That is to say, every constraint we consider here is of the form \(\tau \sim \sigma\), where \(\tau\) and \(\sigma\) are types and \(\sim\) is nominal type equality. (We will extend this treatment to representational equality later, but not now.)
 
-Second, we \emph{solve} the constraint sets we generated. A successful solution to a constraint solving problem means that we can deduce that the conjunction of all the given constraints implies each wanted constraint. Algorithms like the one in GHC do this in an iterative, stateful way. When we find out that a \wanted constraint is satisfied, we remove it from consideration. (We elide here a discussion of producing evidence for equalities, which is another important function of the constraint solver but is not essential to a discussion of equality constraints.) A successful run of the solver means that we terminate in a state where we no longer have any \wanted constraints left to solve. An unsuccessful run of the solver means that we terminate, having discovered that one or more {\wanted}s are unsatisfiable.\\
+Second, we \emph{solve} the constraint sets we generated. A successful solution to a constraint solving problem means that we can deduce that the conjunction of all the given constraints implies each wanted constraint. Algorithms like the one in GHC do this in an iterative, stateful way. When we find out that a \textsc{wanted} constraint is satisfied, we remove it from consideration. (We elide here a discussion of producing evidence for equalities, which is another important function of the constraint solver but is not essential to a discussion of equality constraints.) A successful run of the solver means that we terminate in a state where we no longer have any \textsc{wanted} constraints left to solve. An unsuccessful run of the solver means that we terminate, having discovered that one or more {\textsc{wanted}}s are unsatisfiable.\\
 
-\textbf{Aside:} Additionally, we would like to put in a good-faith effort to detect contradictions in the set of \given constraints, because this gives the user earlier warning that they have written nonsense---but we will never run unsound code if we fail to report such contradictions, since code with unsatisfiable preconditions can never be run.\\
+\textbf{Aside:} Additionally, we would like to put in a good-faith effort to detect contradictions in the set of \textsc{given} constraints, because this gives the user earlier warning that they have written nonsense---but we will never run unsound code if we fail to report such contradictions, since code with unsatisfiable preconditions can never be run.\\
 
 I claim that a constraint solver does the right thing if, for all inputs, it
 \begin{itemize}
-\item rejects if any \wanted constraints are unsatisfiable \textbf{[soundness]}
-\item accepts if all \wanted constraints are satisfiable \textbf{[completeness]}
+\item rejects if any \textsc{wanted} constraints are unsatisfiable \textbf{[soundness]}
+\item accepts if all \textsc{wanted} constraints are satisfiable \textbf{[completeness]}
 \item always finishes processing in bounded time \textbf{[termination]}
 \end{itemize}
 
@@ -126,18 +127,18 @@ We will use properties like ``acyclic,'' ``idempotent,'' etc. freely when discus
   By the above definition of the functional interpretation of \(C\), the number of type variables on which \(C\) is not the identity is at most \(|C|\). By Corollary~\ref{corollary:idempotize}, the substitution \(C^{|C|}\) is thus idempotent.
 \end{proof}
 
-\section{Augmenting Concrete Substitutions}
+\section{Augmenting Substitutions}
 
 One way of making a constraint solver is to build up a canonical concrete substitution (the \emph{inert set}) as we process input constraints. Arbitrary constraints are first canonicalized, which in the case of equality constraints transforms them into \emph{atomic rewrites}. We proceed structurally over types, using generativity/injectivity to split apart type constructor applications. For instance: the initial constraint \(\alpha\, \beta \sim \delta\, \gamma\) would be decomposed into \([\alpha \sim \delta,\, \beta \sim \gamma]\). At this point, we discover some impossible constraints, as we can rule out anything that equates a type constructor application with a constant.
 
-When we encounter a new canonical \given constraint, we wish to add it to the inert set. However, we must first ensure that doing so preserves key properties of the inert set: it must continue to be a concrete substitution (that is, functional) with a strong fixed point. We know by Lemma~\ref{lemma:finite-acyclic-strong} that this property is equivalent to acyclicity for finite substitutions. We present a sufficient set of criteria which together protect the inert set from problematic augmentation.
+When we encounter a new canonical \textsc{given} constraint, we wish to add it to the inert set. However, we must first ensure that doing so preserves key properties of the inert set: it must continue to be a concrete substitution (that is, functional) with a strong fixed point. We know by Lemma~\ref{lemma:finite-acyclic-strong} that this property is equivalent to acyclicity for finite substitutions. We present a sufficient set of criteria which together protect the inert set from problematic augmentation.
 
 % When inserting the GIVEN (a |-> t):
 % T1, T2: apply I.S. to work item's sides [always succeeds]
 % T3: occurs check on work item [fail immediately]
-% K1: for all s, no (a |-> s) in I.S. [kick it out]
+% K1: for all s, no (a |-> s) in I.S. [kick it out] -- preserve functionality
 % K2: trivial
-% K3: for all b, no (b |-> a) in I.S. [kick it out]
+% K3: for all b, no (b |-> a) in I.S. [kick it out] -- we don't need this??
 
 % So we have that:
 % a is not ``acted on'' by existing I.S. (I.S. maps a |-> a) [T1]
@@ -161,10 +162,46 @@ For a given ``work item'' \((\alpha \sim \tau)\), we may insert it into the iner
 \item[(T3)] \(\alpha \notin \fv(\tau)\)
 \end{description}
 
-We show that if these conditions are met, an insert set \(S[\alpha \mapsto \tau]\) is still acyclic, and thus has a strong fixed point.
+We show that if these conditions are met, an inert set \(S[\alpha \mapsto \tau]\) is still acyclic, and thus has a strong fixed point.
 
 \begin{proof}
-  Suppose not, that while \(S\) is acyclic and T1, T2 hold of \((\alpha \sim \tau)\), there is a cycle in \(S[\alpha \mapsto \tau]\). Any such cycle must involve the atomic substitution \(\alpha \mapsto \tau\), as otherwise it would exist in \(S\). This means that there must be a cycle on \(\alpha\). By T3, we know that such a cycle requires some free variable in \(\tau\) to be mapped by \(S^\ast\) to a type with \(\alpha\) as a free variable. Yet by T2, we know that \(S^\ast\) is the identity on \(\tau\), which means that it cannot map any variable in \(\tau\) to \(\alpha\).
+  Suppose not, that while \(S\) is acyclic and T1, T2 hold of \((\alpha \sim \tau)\), there is a cycle in \(S[\alpha \mapsto \tau]\). Any such cycle must involve the atomic substitution \(\alpha \mapsto \tau\), as otherwise it would exist in \(S\). This means that there must be a cycle on \(\alpha\). By T3, we know that such a cycle requires some free variable in \(\tau\) to be mapped by \(S^\ast\) to a type with \(\alpha\) as a free variable (this relies on functionality of \(S\)?). Yet by T2, we know that \(S^\ast\) is the identity on \(\tau\), which means that it cannot map any variable in \(\tau\) to \(\alpha\).
 \end{proof}
+
+% a -> b, c -> a, b -> c
+% [a -> b, c -> b]
+
+% Look at Conor's paper on unification again
+
+\section{A Constraint Solving Algorithm}
+
+We now present a simple algorithm which takes a set of \textsc{given} constraints and a set of \textsc{wanted} constraints, and determines if every \textsc{wanted} constraint is implied by the set of \textsc{given} constraints. We do this in two phases: first, we process the \textsc{given} constraints to form a composite concrete substitution called the ``inert set.'' During this process, we abort the algorithm if we detect obvious inconsistencies in the set of \textsc{given} constraints. If we produce a substitution, we apply it to each \textsc{wanted} in turn, and iff we can rewrite all of them to a reflexive equality (i.e. \(\tau \sim \tau\)), we succeed.
+
+As noted in earlier sections, we would like to show \emph{soundness}, \emph{termination}, and \emph{completeness} of this algorithm.
+
+To write specifically about such an algorithm, we must be precise about what grammar describes our types. Our types take the form
+\begin{equation*}
+  \tau ::= \text{\sc t} \mid \alpha \mid \tau\ \tau
+\end{equation*}
+where we write \(\tau, \sigma, \rho\, \pi\) for types, \(\alpha, \beta, \gamma\) for type variables, and {\sc t}, {\sc s} for ground types (constants) like Int, List, etc. We will extend this grammar later to include type-level functions.
+
+The initial sets of \textsc{given} and \textsc{wanted} constraints are equalities between arbitrary types; that is, they are of the form \(\tau \sim \sigma\). We will call the set of yet-to-be-processed \textsc{given} equalities the ``work set'' (deviating from the nomenclature in GHC to emphasize that we will assume nothing about ordering within this structure). Initially, the work set is the set of \textsc{given} equalities. For each step of the solver, we remove an arbitrary \textsc{given} from the work set and process it. This processing may modify the inert set, and may also produce more \textsc{given} equalities to be deferred for later processing.
+\begin{equation*}
+  \text{\bf process} : \text{equality} \times \text{inert set} \to \text{error} + \text{set of equalities} \times \text{inert set}
+\end{equation*}
+We note that the type \(X + (Y \times \alpha)\) forms a monad (i.e. MaybeT \(X\) (Writer \(Y\)) \(\alpha\)), and use this to simplify presentation of this function.
+
+\begin{alignat*}{2}
+  &\text{\bf process}(\text{\sc t} \sim \text{\sc t}, \I) = \return(\,\I\,) &&\\
+  &\text{\bf process}(\text{\sc t} \sim \text{\sc s}, \_) = \error(\text{``ground types not equal''}) &&\\
+  &\text{\bf process}(\text{\sc t} \sim \sigma\, \rho, \_) = \error(\text{``not an application''}) &&\\
+  &\text{\bf process}(\tau\, \pi \sim \sigma\, \rho, \I) = \text{\bf do} &&\\
+  &~~~~I^\prime \leftarrow \text{\bf process}(\tau \sim\ \sigma, \I) &&\\
+  &~~~~\text{\bf tell}(\{\pi \sim \rho\}) &&\\
+  &~~~~\return(\,I^\prime\,) &&\\
+  &\text{\bf process}(\alpha \sim \tau, \I) = \text{\bf do} &&\\
+  &~~~~\text{\bf tell}(\{\alpha \sim \I(\alpha)\}) &&\\
+  &~~~~\return\big(\,\I\,[\I^\ast(\alpha) \mapsto \I^\ast(\tau)]\,\big) &&
+\end{alignat*}
 
 \end{document}
