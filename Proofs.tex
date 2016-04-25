@@ -58,7 +58,7 @@ We shall try to prove that these properties hold for (some model of) GHC's const
 
 \section{Substitutions}
 
-Constraint solvers like GHC's process an input set of constraints by iteratively constructing a \emph{substitution} over types. For reasons that will become apparent later, this is called the \emph{inert set}.
+Constraint solvers like GHC's process an input set of constraints by iteratively constructing a \emph{substitution} over types. This is called the \emph{inert set}---as we will see later, it is so called because its fixed point maps all variables to types over which the inert set itself is \emph{inert} (that is, idempotent on all contained type variables). The opposite of \emph{inert}, by the way, is \emph{potent}.
 
 A \emph{substitution} is, abstractly, a total function from \emph{type variables} to \emph{types}. We can lift a substitution to be a function from \emph{types} to \emph{types} by uniformly applying it to every type variable in a given type. We will abuse notation in this way, by writing for a substitution \(S\) both \(S(\alpha)\) and \(S(\tau)\).
 
@@ -221,23 +221,20 @@ In the below presentation, we will consider throwing an {\bf error} an ambient e
 \begin{equation*}
   \text{\bf canonicalize}(e) =
   \begin{cases}
+    \text{\bf Nothing}, \varnothing &
+    \begin{minipage}[h]{15em}
+      \vspace{.35em}
+      \(
+      \text{if } e = \text{\sc t} \sim \text{\sc t}
+      \)\\
+      \vspace{-.6em}
+    \end{minipage}\\
     \text{\bf Just}~[\alpha \mapsto \tau], \varnothing &
     \begin{minipage}[h]{13em}
       \vspace{.35em}
       \(
       \text{if } e = \alpha \sim \tau\\
       \lor e = \tau \sim \alpha
-      \)\\
-      \vspace{-.6em}
-    \end{minipage}\\
-    \text{\bf Nothing}, \varnothing & \text{if } e = \text{\sc t} \sim \text{\sc t}\\
-    \error &
-    \begin{minipage}[h]{15em}
-      \vspace{.35em}
-      \(
-      \text{if } e = \text{\sc t} \sim \text{\sc s}\ (\text{\sc t} \ne \text{\sc s})\\
-            \lor e = \text{\sc t} \sim \tau\, \sigma\\
-            \lor e = \tau\, \sigma \sim \text{\sc t}
       \)\\
       \vspace{-.6em}
     \end{minipage}\\
@@ -248,26 +245,40 @@ In the below presentation, we will consider throwing an {\bf error} an ambient e
       \text{\bf in}~~l, R \cup \{\pi \sim \rho\}
       \)\\
       \vspace{-.6em}
+    \end{minipage} & \text{if } e = \tau\, \pi \sim \sigma\, \rho\\
+    \error &
+    \begin{minipage}[h]{15em}
+      \vspace{.35em}
+      \(
+      \text{if } e = \text{\sc t} \sim \text{\sc s}\ (\text{\sc t} \ne \text{\sc s})\\
+            \lor e = \text{\sc t} \sim \tau\, \sigma\\
+            \lor e = \tau\, \sigma \sim \text{\sc t}
+      \)\\
+      \vspace{-.6em}
     \end{minipage}
-    & \text{if } e = \tau\, \pi \sim \sigma\, \rho\\
   \end{cases}
 \end{equation*}
-Here, we need have a \(\text{\bf choice} : \text{Set}~x \to \text{Maybe}~(x, \text{Set}~x)\). We specify that \(\text{\bf choice}(S) = \text{\bf Nothing} \iff S = \varnothing\) and \(\text{\bf choice}(S) = \text{\bf Just}(x, S^\prime) \implies x \in S \land x \notin S^\prime \land \{x\} \cup S^\prime = S\). In practice, a concrete set may be represented as a list, balanced tree, etc.; choice merely needs to pick \emph{some} element of the set, and we assume nothing about which element it picks. With this operation, we can write the core solver loop:
-\begin{equation*}
-  \text{\bf step} : \text{Substitution} \times \text{Set}~\text{Equality} \to \text{Substitution} \times \text{Set}~\text{Equality}
-\end{equation*}
+
+Next, we need to posit the existence of some \(\text{\bf choice} : \text{Set}~x \to \text{Maybe}~(x, \text{Set}~x)\).\footnote{Note that this is not the axiom of choice: the type Set is the type of concrete finite sets.} We specify that
 \begin{align*}
+  \text{\bf choice}(S) &= \text{\bf Nothing} \iff S = \varnothing\\
+  \text{\bf choice}(S) &= \text{\bf Just}(x, S^\prime) \implies x \in S \land x \notin S^\prime \land \{x\} \cup S^\prime = S
+\end{align*}
+In practice, a concrete set may be represented as a list, balanced tree, etc.; choice merely needs to pick \emph{some} element of the set, and we assume in our proofs nothing about which element it picks.\footnote{In GHC, \textbf{choice} is morally \textbf{uncons}.} With this operation, we can write the core solver loop:
+\begin{align*}
+  \text{\bf step} &: \text{Substitution} \times \text{Set}~\text{Equality} \to \text{Substitution} \times \text{Set}~\text{Equality}\\
   \text{\bf step}&(\inertset, W) =\\
-      &\!\!\!\!\!\text{\bf case}~\text{\bf choice}(W)~\text{\bf of}\\
-      &\text{\bf Nothing} \to \inertset, \varnothing\\
-      &\text{\bf Just}~(t \sim s, W^\prime) \to\\
-      &~~~\text{\bf let}~[\alpha \mapsto \tau], R
-      = \text{\bf canonicalize}(\inertset^\ast(t) \sim \inertset^\ast(s))\\
-      &~~~\text{\bf in}~
+      &\!\!\!\!\!\!\!\!\text{\bf case}~\text{\bf choice}(W)~\text{\bf of}\\
+      &\!\!\!\text{\bf Nothing} \to \inertset, \varnothing\\
+      &\!\!\!\text{\bf Just}~(\sigma \sim \rho, W^\prime) \to\\
+      &~\text{\bf let }mr, R = \text{\bf canonicalize}(\inertset^\ast(\sigma) \sim \inertset^\ast(\rho))\\
+      &~\text{\bf in }\text{\bf case}~mr~\text{\bf of}\\
+      &~~~~\text{\bf Nothing} \to \inertset, W^\prime \cup R\\
+      &~~~~\text{\bf Just}~[\alpha \mapsto \tau] \to
         \begin{cases}
-          \inertset[\alpha \mapsto \tau], W^\prime \cup R \cup \{\alpha \sim \inertset(\alpha)\} & \text{if }\alpha \ne \inertset(\alpha) \land \alpha \notin \fv(\tau)\\
-          \inertset,\phantom{[\alpha \mapsto \tau]} W^\prime \cup R & \text{if }\alpha = \inertset(\alpha)\land\alpha \notin \fv(\tau)\\
-          \text{\bf error} & \phantom{\alpha = \inertset(\alpha)\land\ \,}\text{if }\alpha \in \fv(\tau)
+          \inertset,\phantom{[\alpha \mapsto \tau]} W^\prime \cup R & \text{if }\alpha = \tau\\
+          \inertset[\alpha \mapsto \tau], W^\prime \cup R \cup \{\alpha \sim \inertset(\alpha)\} & \text{if }\alpha \ne \tau \land \alpha \notin \fv(\tau)\\
+          \text{\bf error} & \text{if }\alpha \ne \tau \land \alpha \in \fv(\tau)
         \end{cases}
 \end{align*}
 
@@ -293,7 +304,7 @@ We previously showed that we can preserve acyclicity by making sure that every a
 \item[(T2)] \(S^\ast(\tau) = \tau\)
 \item[(T3)] \(\alpha \notin \fv(\tau)\)
 \end{description}
-These are all ensured by \textbf{step}. For any substitution \(S\) and types \(s\) and \(t\), we know \(S(\alpha) = \alpha\) and \(S(\tau) = \tau\) for any \([\alpha \mapsto \tau], \_ = \text{\bf canonicalize}(S(t) \sim S(s))\).\footnote{Proof: by induction on the structure of types and the definition of what it means to lift a substitution to apply to types.} Because of this, the atomic rewrite we get out of \(\text{\bf canonicalize}(\inertset^\ast(t) \sim \inertset^\ast(s))\) is on both sides a fixed point of \(\inertset\) (i.e. T1 and T2 hold). And since \textbf{step} performs the ``occurs check'' of T3 itself, this property is also preserved.
+These are all ensured by \textbf{step}. For any acyclic substitution \(S\) and types \(s\) and \(t\), we know \(S(\alpha) = \alpha, S(\tau) = \tau\) for any \([\alpha \mapsto \tau], \_ = \text{\bf canonicalize}(S^\ast(t) \sim S^\ast(s))\).\footnote{Proof: any type variable remaining in \(S^\ast(t) \sim S^\ast(s)\) will be mapped to itself by \(S^\ast\), by the definition of fixed point on acyclic substitutions. Since \textbf{canonicalize} does not introduce any new type variables (and specifically, it does not introduce new type variables in the non-reflexive portion of \(S\)'s domain), \(S\) is the identity on the result of this canonicalization.} Because of this, the atomic rewrite we get out of \(\text{\bf canonicalize}(\inertset^\ast(t) \sim \inertset^\ast(s))\) is on both sides a fixed point of \(\inertset\) (i.e. T1 and T2 hold). And since \textbf{step} performs the ``occurs check'' of T3 itself, this property is also preserved.
 
 Thus, our continued use of \(\inertset^\ast\) as a well-defined substitution is justified.
 
@@ -307,15 +318,20 @@ Thus, our continued use of \(\inertset^\ast\) as a well-defined substitution is 
 
 To prove that this \textbf{solve} operation is well-defined, we need to show that such a fixed point always exists. Since the termination condition of the \textbf{solve} operation is when the work set is empty, it suffices to exhibit some bounded-below metric over the pair of the work set and inert set which \textbf{step} causes to decrease with every invocation.
 
-We define our metric \(M : \text{Set}~\text{Equality} \times \text{Substitution} \to \mathbb{N} \times \mathbb{N} \times \mathbb{N}\) as having a three-dimensional total lexicographic ordering. That is, if \(M(W_1, \inertset_1) = l_1, m_1, n_1\) and \(M(W_2, \inertset_2) = l_2, m_2, n_2\),
+We define our metric \(M : \text{Substitution} \times \text{Set}~\text{Equality} \to \mathbb{N} \times \mathbb{N} \times \mathbb{N} \times \mathbb{N}\) as having a four-dimensional total lexicographic ordering.
+
+That is, if \(M(W_1, \inertset_1) = k_1, l_1, m_1, n_1\) and \(M(W_2, \inertset_2) = k_2, l_2, m_2, n_2\),
 \begin{alignat*}{1}
-  M(W_1, \inertset_1) < M(W_2, I_2) \iff (&l_1 < l_2)\\
-                   \lor\hspace{1.05em}(&l_1 = l_2 \land m_1 < m_2)\\
-                   \lor\hspace{1.05em}(&l_1 = l_2 \land m_1 = m_2 \land n_1 < n_2)
+  M(W_1, \inertset_1) < M(W_2, I_2) \iff (&k_1 < k_2)\\
+                     \lor\hspace{1.1em}(&k_1 = k_2 \land l_1 < l_2)\\
+                     \lor\hspace{1.1em}(&k_1 = k_2 \land l_1 = l_2 \land m_1 < m_2)\\
+                     \lor\hspace{1.1em}(&k_1 = k_2 \land l_1 = l_2 \land m_1 = m_2 \land n_1 < n_2)
 \end{alignat*}
+We will show: for all \(\inertset, W\), if \(\text{\bf step}(\inertset, W) \ne \inertset, \varnothing\), then \(M(\text{\bf step}(\inertset, W)) < M(\inertset, W)\) (decreasing-ness), and \(M(\inertset, \varnothing) \le M(\inertset, W)\) (well-founded-ness). These two properties are sufficient to demonstrate termination of the algorithm---if \textbf{step} always decreases \(M\) when outside the termination condition, and \(M\) is minimized in the termination condition, then by induction over a well-founded total order, \textbf{solve} takes a finite number of \textbf{step}s before returning an error or a result.
+
 We define our metric \(M\) as a triple of summations of various characteristics of individual types in the work set.
 \begin{align*}
-  M(W, \inertset) = &\!\!\!\!\!\sum_{\tau\,\in\,\text{types}(W)}\!\!\!\!\!\!\!\!\text{irreflexive}(\inertset, \tau), \!\!\!\!\!\sum_{\tau\,\in\,\text{types}(W)}\!\!\!\!\!\!\!\!|\tau|,\ |W|
+  M(\inertset, W) = &~\text{inertvars}(\inertset, W), \!\!\!\!\!\sum_{\tau\,\in\,\text{types}(W)}\!\!\!\!\!\!\!\!\text{potentoccs}(\inertset, \tau), \!\!\!\!\!\sum_{\tau\,\in\,\text{types}(W)}\!\!\!\!\!\!\!\!|\tau|,\ \ |W|
 \end{align*}
 This definition relies on several other metrics we need to define.
 
@@ -332,29 +348,27 @@ The size of a type is how structurally big it is, determined by number of variab
   |\tau\,\sigma| &= 1 + |\tau| + |\sigma|
 \end{align*}
 
-The only nontrivial metric we need to define is \(\text{irreflexive}(\inertset, \tau)\): the number of variable name occurrences in \(\tau\) which are mapped to something other than themselves by \(\inertset\). That is,
+The first of two nontrivial metrics we need to define is \(\text{potentoccs}(\inertset, \tau)\): the number of variable name \emph{occurrences} in \(\tau\) which are mapped by \(\inertset\) to something other than themselves. That is,
 \begin{align*}
-  \text{irreflexive}(\inertset, \tau) &= \!\!\!\!\sum_{\substack{\alpha\,\in\,\fv(\tau)\\\alpha\,\ne\,\inertset(\alpha)}}\!\!\!\text{count}(\alpha, \tau)
+  \text{potentoccs}(\inertset, \tau) &= \!\!\!\!\sum_{\substack{\alpha\,\in\,\fv(\tau)\\\alpha\,\ne\,\inertset(\alpha)}}\!\!\!\text{occs}(\alpha, \tau)
 \end{align*}
+\vspace*{-1\baselineskip}
 \begin{alignat*}{3}
-  &\text{count}(\alpha, \alpha) &&= 1 &&\\
-  &\text{count}(\alpha, \beta)  &&= 0 &&\\
-  &\text{count}(\alpha, \text{\sc t}) &&= 0 &&\\
-  &\text{count}(\alpha, \tau\,\sigma) &&= \text{count}(\alpha, \tau) + \text{count}(\alpha, \sigma) &&
+  &\text{occs}(\alpha, \alpha) &&= 1 &&\\
+  &\text{occs}(\alpha, \beta)  &&= 0 &&\\
+  &\text{occs}(\alpha, \text{\sc t}) &&= 0 &&\\
+  &\text{occs}(\alpha, \tau\,\sigma) &&= \text{occs}(\alpha, \tau) + \text{occs}(\alpha, \sigma) &&
 \end{alignat*}
 
-To show that the metric \(M\) is decreasing for \textbf{step}, we must show that for every \textbf{step} we take, either
-\begin{enumerate}
-\item The number of irreflexively mapped variable name occurrences in the work set decreases
-\item The number of irreflexively mapped variable name occurrences in the work set stays constant, but the cumulative size of all types in the work set decreases
-\item The number of irreflexively mapped variable name occurrences in the work set \emph{and} the cumulative size of all types in the work set stay constant, but the size of the work set decreases
-\end{enumerate}
+The second nontrivial metric is \(\text{inertvars}(\inertset, \tau)\): the number of \emph{distinct} variables mentioned anywhere (i.e. in \(W\) or in the image of \(\inertset\) over \(W\)) which are mapped by \(\inertset\) to themselves.\footnote{Make sure to contrast \(\text{inertvars}(\inertset, \tau)\) with \(\text{potentoccs}(\inertset, \tau)\); the former counts distinct variables reflexively mapped; the latter counts variable name occurrences irreflexively mapped.}
 
-% Size only increases when we rewrite with inert set, which decreases irreflexive occurrences
+
+
+% Size only increases when we rewrite with inert set, which decreases irrefloccs occurrences
 % If no rewriting happens, size can only decrease or stay the same
 % If size stays the same (that is, no leftovers), work set cardinality decreases... except when we kick out in these circumstances, it stays the same.
 
-% THE KEY: Kicking out is equivalent to kicking out after rewriting with new inert set! This means that in kicking-out circumstances, we decrease the irreflexive metric, since we trade an (a |-> t) for some (r ~ s) where neither r nor s mention a. The actual algorithm defers this rewriting until the kicked-out item is reprocessed, but these two orderings are equivalent (just, one is easier to reason about).
+% THE KEY: Kicking out is equivalent to kicking out after rewriting with new inert set! This means that in kicking-out circumstances, we decrease the irrefloccs metric, since we trade an (a |-> t) for some (r ~ s) where neither r nor s mention a. The actual algorithm defers this rewriting until the kicked-out item is reprocessed, but these two orderings are equivalent (just, one is easier to reason about).
 
 \subsection{Completeness}
 
