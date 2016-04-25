@@ -350,6 +350,10 @@ To show that the metric \(M\) is decreasing for \textbf{step}, we must show that
 \item The number of irreflexively mapped variable name occurrences in the work set \emph{and} the cumulative size of all types in the work set stay constant, but the size of the work set decreases
 \end{enumerate}
 
+% Size only increases when we rewrite with inert set, which decreases irreflexive occurrences
+% If no rewriting happens, size can only decrease or stay the same
+% If size stays the same (that is, no leftovers), work set cardinality decreases... except when we kick out in these circumstances, it stays the same.
+
 % THE KEY: Kicking out is equivalent to kicking out after rewriting with new inert set! This means that in kicking-out circumstances, we decrease the irreflexive metric, since we trade an (a |-> t) for some (r ~ s) where neither r nor s mention a. The actual algorithm defers this rewriting until the kicked-out item is reprocessed, but these two orderings are equivalent (just, one is easier to reason about).
 
 \subsection{Completeness}
