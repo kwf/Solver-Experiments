@@ -1,6 +1,6 @@
 % LaTeX
 \documentclass[10pt, letterpaper, oneside]{article}
-\usepackage{amsfonts, amsmath, amssymb, amsthm, enumitem, graphicx, hanging, ifthen, lettrine, listings, microtype, multirow, natbib, pdfpages, rotating, scalefnt, setspace, textcomp, verbatim, xcolor, xspace}
+\usepackage{amsfonts, amsmath, amssymb, amsthm, enumitem, graphicx, hanging, ifthen, lettrine, listings, microtype, multirow, mathtools, natbib, pdfpages, rotating, scalefnt, setspace, textcomp, verbatim, xcolor, xspace}
 \usepackage[utf8]{inputenc}\usepackage[T1]{fontenc}
 % \usepackage{mathpazo}\usepackage{tgpagella}\usepackage[scaled]{luximono}
 \usepackage[unicode=true,pdfusetitle,bookmarks=true,bookmarksnumbered=true,bookmarksopen=false,breaklinks=false,pdfborder={0 0 0},backref=false,colorlinks=false]{hyperref}
@@ -12,7 +12,7 @@
 \author{Kenny Foner}
 \date{\today}
 
-\newcommand{\I}{\text{I}}
+\newcommand{\inertset}{\text{I}}
 \newcommand{\process}{\text{\bf process}}
 \newcommand{\return}{\text{\bf return}}
 \newcommand{\error}{\text{\bf error}}
@@ -23,6 +23,10 @@
 \declaretheorem[numberwithin=section]{theorem}
 \declaretheorem[sibling=theorem]{lemma}
 \declaretheorem[sibling=theorem]{corollary}
+
+\newenvironment{bcases}
+  {\left\lbrace\begin{aligned}}
+  {\end{aligned}\right\rbrace}
 
 \begin{document}
 \maketitle
@@ -185,23 +189,169 @@ To write specifically about such an algorithm, we must be precise about what gra
 \end{equation*}
 where we write \(\tau, \sigma, \rho\, \pi\) for types, \(\alpha, \beta, \gamma\) for type variables, and {\sc t}, {\sc s} for ground types (constants) like Int, List, etc. We will extend this grammar later to include type-level functions.
 
-The initial sets of \textsc{given} and \textsc{wanted} constraints are equalities between arbitrary types; that is, they are of the form \(\tau \sim \sigma\). We will call the set of yet-to-be-processed \textsc{given} equalities the ``work set'' (deviating from the nomenclature in GHC to emphasize that we will assume nothing about ordering within this structure). Initially, the work set is the set of \textsc{given} equalities. For each step of the solver, we remove an arbitrary \textsc{given} from the work set and process it. This processing may modify the inert set, and may also produce more \textsc{given} equalities to be deferred for later processing.
-\begin{equation*}
-  \text{\bf process} : \text{equality} \times \text{inert set} \to \text{error} + \text{set of equalities} \times \text{inert set}
-\end{equation*}
-We note that the type \(X + (Y \times \alpha)\) forms a monad (i.e. MaybeT \(X\) (Writer \(Y\)) \(\alpha\)), and use this to simplify presentation of this function.
+Formally, a substitution is a function over \emph{type variables}. However, we can naturally extend it to work over \emph{types} as well.
 
-\begin{alignat*}{2}
-  &\text{\bf process}(\text{\sc t} \sim \text{\sc t}, \I) = \return(\,\I\,) &&\\
-  &\text{\bf process}(\text{\sc t} \sim \text{\sc s}, \_) = \error(\text{``ground types not equal''}) &&\\
-  &\text{\bf process}(\text{\sc t} \sim \sigma\, \rho, \_) = \error(\text{``not an application''}) &&\\
-  &\text{\bf process}(\tau\, \pi \sim \sigma\, \rho, \I) = \text{\bf do} &&\\
-  &~~~~I^\prime \leftarrow \text{\bf process}(\tau \sim\ \sigma, \I) &&\\
-  &~~~~\text{\bf tell}(\{\pi \sim \rho\}) &&\\
-  &~~~~\return(\,I^\prime\,) &&\\
-  &\text{\bf process}(\alpha \sim \tau, \I) = \text{\bf do} &&\\
-  &~~~~\text{\bf tell}(\{\alpha \sim \I(\alpha)\}) &&\\
-  &~~~~\return\big(\,\I\,[\I^\ast(\alpha) \mapsto \I^\ast(\tau)]\,\big) &&
+\begin{equation*}
+  S(t) =
+  \begin{cases}
+    \text{\sc t} & \text{if } t = \text{\sc t}\\
+    S(\alpha) & \text{if } t = \alpha\\
+    S(\tau)\,S(\sigma) & \text{if } t = \tau\,\sigma
+  \end{cases}
+\end{equation*}
+
+We also wish to distinguish between mere \emph{equalities} \((\tau \sim \sigma)\) and what we've been calling \emph{atomic rewrites} \([\alpha \mapsto \tau]\). The latter of these can be used to alter substitutions directly.
+\begin{equation*}
+  S[\alpha \mapsto \tau](\beta) =
+  \begin{cases}
+    \tau & \text{if } \beta = \alpha\\
+    S(\beta) & \text{otherwise}
+  \end{cases}
+\end{equation*}
+
+The initial sets of \textsc{given} and \textsc{wanted} constraints are equalities between arbitrary types; that is, they are of the form \(\tau \sim \sigma\). We will call the set of yet-to-be-processed \textsc{given} equalities the ``work set'' (deviating from the nomenclature in GHC to emphasize that we will assume nothing about ordering within this structure). Initially, the work set is the set of \textsc{given} equalities. For each step of the solver, we remove an arbitrary \textsc{given} from the work set and process it. This processing may modify the inert set, and may also produce more \textsc{given} equalities to be deferred for later processing.
+
+We split this processing into several parts. First, we use the inert set to rewrite a \text{\sc given} equality, and then extract the ``leftmost'' equality from it, leaving behind a set of other equalities made from the left-behind pieces of its two types. We then attempt to insert this leftmost equality into the inert set, ``kicking out'' any atomic rewrite in the inert set which conflicts with it. We finally add the kicked-out equalities as well as the leftover parts of the original \text{\sc given} equality to the work-list, and continue with the solver's loop.
+
+In the below presentation, we will consider throwing an {\bf error} an ambient effect not reflected in the types shown. Errors are never recovered from; they immediately abort the solving process, as they indicate a contradiction in the inert set.
+
+\begin{equation*}
+  \text{\bf canonicalize} : \text{Equality} \to \text{Maybe}~\text{Rewrite} \times \text{Set}~\text{Equality}
+\end{equation*}
+\begin{equation*}
+  \text{\bf canonicalize}(e) =
+  \begin{cases}
+    \text{\bf Just}~[\alpha \mapsto \tau], \varnothing &
+    \begin{minipage}[h]{13em}
+      \vspace{.35em}
+      \(
+      \text{if } e = \alpha \sim \tau\\
+      \lor e = \tau \sim \alpha
+      \)\\
+      \vspace{-.6em}
+    \end{minipage}\\
+    \text{\bf Nothing}, \varnothing & \text{if } e = \text{\sc t} \sim \text{\sc t}\\
+    \error &
+    \begin{minipage}[h]{15em}
+      \vspace{.35em}
+      \(
+      \text{if } e = \text{\sc t} \sim \text{\sc s}\ (\text{\sc t} \ne \text{\sc s})\\
+            \lor e = \text{\sc t} \sim \tau\, \sigma\\
+            \lor e = \tau\, \sigma \sim \text{\sc t}
+      \)\\
+      \vspace{-.6em}
+    \end{minipage}\\
+    \begin{minipage}[h]{15em}
+      \vspace{.35em}
+      \(
+      \text{\bf let}~l, R = \text{\bf canonicalize}(\tau \sim \sigma)\\
+      \text{\bf in}~~l, R \cup \{\pi \sim \rho\}
+      \)\\
+      \vspace{-.6em}
+    \end{minipage}
+    & \text{if } e = \tau\, \pi \sim \sigma\, \rho\\
+  \end{cases}
+\end{equation*}
+Here, we need have a \(\text{\bf choice} : \text{Set}~x \to \text{Maybe}~(x, \text{Set}~x)\). We specify that \(\text{\bf choice}(S) = \text{\bf Nothing} \iff S = \varnothing\) and \(\text{\bf choice}(S) = \text{\bf Just}(x, S^\prime) \implies x \in S \land x \notin S^\prime \land \{x\} \cup S^\prime = S\). In practice, a concrete set may be represented as a list, balanced tree, etc.; choice merely needs to pick \emph{some} element of the set, and we assume nothing about which element it picks. With this operation, we can write the core solver loop:
+\begin{equation*}
+  \text{\bf step} : \text{Substitution} \times \text{Set}~\text{Equality} \to \text{Substitution} \times \text{Set}~\text{Equality}
+\end{equation*}
+\begin{align*}
+  \text{\bf step}&(\inertset, W) =\\
+      &\!\!\!\!\!\text{\bf case}~\text{\bf choice}(W)~\text{\bf of}\\
+      &\text{\bf Nothing} \to \inertset, \varnothing\\
+      &\text{\bf Just}~(t \sim s, W^\prime) \to\\
+      &~~~\text{\bf let}~[\alpha \mapsto \tau], R
+      = \text{\bf canonicalize}(\inertset^\ast(t) \sim \inertset^\ast(s))\\
+      &~~~\text{\bf in}~
+        \begin{cases}
+          \inertset[\alpha \mapsto \tau], W^\prime \cup R \cup \{\alpha \sim \inertset(\alpha)\} & \text{if }\alpha \ne \inertset(\alpha) \land \alpha \notin \fv(\tau)\\
+          \inertset,\phantom{[\alpha \mapsto \tau]} W^\prime \cup R & \text{if }\alpha = \inertset(\alpha)\land\alpha \notin \fv(\tau)\\
+          \text{\bf error} & \phantom{\alpha = \inertset(\alpha)\land\ \,}\text{if }\alpha \in \fv(\tau)
+        \end{cases}
+\end{align*}
+
+To invoke the solver on some initial set \(G\) of \textsc{given}s, we merely find the fixed point of \(\text{\bf step}(\text{\bf id}, G)\), which will be some substitution \(\inertset\) paired with \(\varnothing\).
+\begin{equation*}
+  \text{\bf solve} : \text{Set}~\text{Equality} \to \text{Substitution}
+\end{equation*}
+
+\section{Soundness}
+
+Soundness of this algorithm can be broken up into two parts:
+
+\begin{itemize}
+\item \textbf{step} preserves substitutionality of the inert set
+\item the result of \textbf{step} never rewrites two type variables to the same type if the \textsc{given} set's  consistently shows them to have have different types
+\end{itemize}
+
+\subsection{Substitutionality}
+
+We previously showed that we can preserve acyclicity by making sure that every augmentation of a substitution \(S[\alpha \mapsto \tau]\) meets three criteria:
+\begin{description}
+\item[(T1)] \(S^\ast(\alpha) = \alpha\)
+\item[(T2)] \(S^\ast(\tau) = \tau\)
+\item[(T3)] \(\alpha \notin \fv(\tau)\)
+\end{description}
+These are all ensured by \textbf{step}. For any substitution \(S\) and types \(s\) and \(t\), we know \(S(\alpha) = \alpha\) and \(S(\tau) = \tau\) for any \([\alpha \mapsto \tau], \_ = \text{\bf canonicalize}(S(t) \sim S(s))\).\footnote{Proof: by induction on the structure of types and the definition of what it means to lift a substitution to apply to types.} Because of this, the atomic rewrite we get out of \(\text{\bf canonicalize}(\inertset^\ast(t) \sim \inertset^\ast(s))\) is on both sides a fixed point of \(\inertset\) (i.e. T1 and T2 hold). And since \textbf{step} performs the ``occurs check'' of T3 itself, this property is also preserved.
+
+Thus, our continued use of \(\inertset^\ast\) as a well-defined substitution is justified.
+
+\subsection{Consistency}
+
+
+
+% Because \textbf{leftmost} only generates atomic rewrites which are formed by the application of generativity/injectivity of type constructors over the initial given equalities, it will never hand back an atomic rewrite which disrespects type equality. If the \textsc{given} set is consistent, any transitive closure of such atomic rewrites cannot disrespect any of the provided type equalities.
+
+\section{Termination}
+
+To prove that this \textbf{solve} operation is well-defined, we need to show that such a fixed point always exists. Since the termination condition of the \textbf{solve} operation is when the work set is empty, it suffices to exhibit some bounded-below metric over the pair of the work set and inert set which \textbf{step} causes to decrease with every invocation.
+
+We define our metric \(M : \text{Set}~\text{Equality} \times \text{Substitution} \to \mathbb{N} \times \mathbb{N} \times \mathbb{N}\) as having a three-dimensional total lexicographic ordering. That is, if \(M(W_1, \inertset_1) = l_1, m_1, n_1\) and \(M(W_2, \inertset_2) = l_2, m_2, n_2\),
+\begin{alignat*}{1}
+  M(W_1, \inertset_1) < M(W_2, I_2) \iff (&l_1 < l_2)\\
+                   \lor\hspace{1.05em}(&l_1 = l_2 \land m_1 < m_2)\\
+                   \lor\hspace{1.05em}(&l_1 = l_2 \land m_1 = m_2 \land n_1 < n_2)
 \end{alignat*}
+We define our metric \(M\) as a triple of summations of various characteristics of individual types in the work set.
+\begin{align*}
+  M(W, \inertset) = &\!\!\!\!\!\sum_{\tau\,\in\,\text{types}(W)}\!\!\!\!\!\!\!\!\text{irreflexive}(\inertset, \tau), \!\!\!\!\!\sum_{\tau\,\in\,\text{types}(W)}\!\!\!\!\!\!\!\!|\tau|,\ |W|
+\end{align*}
+This definition relies on several other metrics we need to define.
+
+The set of types in the work set is the union of all types in the left- and right-hand sides of every equality.
+\begin{align*}
+  \text{types}(W) =    &~\{\tau \mid \exists \sigma, \tau \sim \sigma \in W \}\\
+                  \cup &~\{\sigma \mid \exists \tau, \tau \sim \sigma \in W \}
+\end{align*}
+
+The size of a type is how structurally big it is, determined by number of variables, constants, and applications combined.
+\begin{align*}
+  |\text{\sc t}| &= 1\\
+  |\alpha|       &= 1\\
+  |\tau\,\sigma| &= 1 + |\tau| + |\sigma|
+\end{align*}
+
+The only nontrivial metric we need to define is \(\text{irreflexive}(\inertset, \tau)\): the number of variable name occurrences in \(\tau\) which are mapped to something other than themselves by \(\inertset\). That is,
+\begin{align*}
+  \text{irreflexive}(\inertset, \tau) &= \!\!\!\!\sum_{\substack{\alpha\,\in\,\fv(\tau)\\\alpha\,\ne\,\inertset(\alpha)}}\!\!\!\text{count}(\alpha, \tau)
+\end{align*}
+\begin{alignat*}{3}
+  &\text{count}(\alpha, \alpha) &&= 1 &&\\
+  &\text{count}(\alpha, \beta)  &&= 0 &&\\
+  &\text{count}(\alpha, \text{\sc t}) &&= 0 &&\\
+  &\text{count}(\alpha, \tau\,\sigma) &&= \text{count}(\alpha, \tau) + \text{count}(\alpha, \sigma) &&
+\end{alignat*}
+
+To show that the metric \(M\) is decreasing for \textbf{step}, we must show that for every \textbf{step} we take, either
+\begin{enumerate}
+\item The number of irreflexively mapped variable name occurrences in the work set decreases
+\item The number of irreflexively mapped variable name occurrences in the work set stays constant, but the cumulative size of all types in the work set decreases
+\item The number of irreflexively mapped variable name occurrences in the work set \emph{and} the cumulative size of all types in the work set stay constant, but the size of the work set decreases
+\end{enumerate}
+
+% THE KEY: Kicking out is equivalent to kicking out after rewriting with new inert set! This means that in kicking-out circumstances, we decrease the irreflexive metric, since we trade an (a |-> t) for some (r ~ s) where neither r nor s mention a. The actual algorithm defers this rewriting until the kicked-out item is reprocessed, but these two orderings are equivalent (just, one is easier to reason about).
+
+\subsection{Completeness}
 
 \end{document}
