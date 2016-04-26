@@ -1,6 +1,6 @@
 % LaTeX
 \documentclass[10pt, letterpaper, oneside]{article}
-\usepackage{amsfonts, amsmath, amssymb, amsthm, enumitem, graphicx, hanging, ifthen, lettrine, listings, microtype, multirow, mathtools, natbib, pdfpages, rotating, scalefnt, setspace, textcomp, verbatim, xcolor, xspace}
+\usepackage{amsfonts, amsmath, amssymb, amsthm, enumitem, graphicx, hanging, ifthen, lettrine, listings, microtype, multirow, mathtools, natbib, pdfpages, rotating, scalefnt, setspace, textcomp, thinsp, verbatim, xcolor, xspace}
 \usepackage[utf8]{inputenc}\usepackage[T1]{fontenc}
 % \usepackage{mathpazo}\usepackage{tgpagella}\usepackage[scaled]{luximono}
 \usepackage[unicode=true,pdfusetitle,bookmarks=true,bookmarksnumbered=true,bookmarksopen=false,breaklinks=false,pdfborder={0 0 0},backref=false,colorlinks=false]{hyperref}
@@ -214,12 +214,9 @@ The initial sets of \textsc{given} and \textsc{wanted} constraints are equalitie
 We split this processing into several parts. First, we use the inert set to rewrite a \text{\sc given} equality, and then extract the ``leftmost'' equality from it, leaving behind a set of other equalities made from the left-behind pieces of its two types. We then attempt to insert this leftmost equality into the inert set, ``kicking out'' any atomic rewrite in the inert set which conflicts with it. We finally add the kicked-out equalities as well as the leftover parts of the original \text{\sc given} equality to the work-list, and continue with the solver's loop.
 
 In the below presentation, we will consider throwing an {\bf error} an ambient effect not reflected in the types shown. Errors are never recovered from; they immediately abort the solving process, as they indicate a contradiction in the inert set.
-
-\begin{equation*}
-  \text{\bf canonicalize} : \text{Equality} \to \text{Maybe}~\text{Rewrite} \times \text{Set}~\text{Equality}
-\end{equation*}
-\begin{equation*}
-  \text{\bf canonicalize}(e) =
+\begin{align*}
+  \text{\bf canonicalize} &: \text{Equality} \to \text{Maybe}~\text{Rewrite} \times \text{Set}~\text{Equality}\\
+  \text{\bf canonicalize}&(e) =
   \begin{cases}
     \text{\bf Nothing}, \varnothing &
     \begin{minipage}[h]{15em}
@@ -257,7 +254,7 @@ In the below presentation, we will consider throwing an {\bf error} an ambient e
       \vspace{-.6em}
     \end{minipage}
   \end{cases}
-\end{equation*}
+\end{align*}
 
 Next, we need to posit the existence of some \(\text{\bf choice} : \text{Set}~x \to \text{Maybe}~(x, \text{Set}~x)\).\footnote{Note that this is not the axiom of choice: the type Set is the type of concrete finite sets.} We specify that
 \begin{align*}
@@ -282,10 +279,16 @@ In practice, a concrete set may be represented as a list, balanced tree, etc.; c
         \end{cases}
 \end{align*}
 
-To invoke the solver on some initial set \(G\) of \textsc{given}s, we merely find the fixed point of \(\text{\bf step}(\text{\bf id}, G)\), which will be some substitution \(\inertset\) paired with \(\varnothing\).
-\begin{equation*}
-  \text{\bf solve} : \text{Set}~\text{Equality} \to \text{Substitution}
-\end{equation*}
+To invoke the solver on some initial set \(G\) of \textsc{given}s, we find the fixed point of \(\text{\bf step}(\text{\bf id}, G)\), which will be some substitution \(\inertset\) paired with \(\varnothing\).
+\begin{align*}
+  \text{\bf solve} &: \text{Set}~\text{Equality} \to \text{Substitution}\\
+  \text{\bf solve}&(G) = \text{\bf solve}^\prime(\text{\bf id}, G)\\
+  \text{where}&~\text{\bf solve}^\prime(\inertset, W) =
+    \begin{cases}
+      \inertset & \text{if } W = \varnothing\\
+      \text{\bf solve}^\prime\big(\text{\bf step}(\inertset, W)\big) & \text{otherwise}
+    \end{cases}
+\end{align*}
 
 \section{Soundness}
 
@@ -329,19 +332,19 @@ That is, if \(M(W_1, \inertset_1) = k_1, l_1, m_1, n_1\) and \(M(W_2, \inertset_
 \end{alignat*}
 We will show: for all \(\inertset, W\), if \(\text{\bf step}(\inertset, W) \ne \inertset, \varnothing\), then \(M(\text{\bf step}(\inertset, W)) < M(\inertset, W)\) (decreasing-ness), and \(M(\inertset, \varnothing) \le M(\inertset, W)\) (well-founded-ness). These two properties are sufficient to demonstrate termination of the algorithm---if \textbf{step} always decreases \(M\) when outside the termination condition, and \(M\) is minimized in the termination condition, then by induction over a well-founded total order, \textbf{solve} takes a finite number of \textbf{step}s before returning an error or a result.
 
-We define our metric \(M\) as a triple of summations of various characteristics of individual types in the work set.
+We define our lexicographic metric \(M\) as a quadruple of simpler metrics over the work set and inert set.
 \begin{align*}
   M(\inertset, W) = &~\text{inertvars}(\inertset, W), \!\!\!\!\!\sum_{\tau\,\in\,\text{types}(W)}\!\!\!\!\!\!\!\!\text{potentoccs}(\inertset, \tau), \!\!\!\!\!\sum_{\tau\,\in\,\text{types}(W)}\!\!\!\!\!\!\!\!|\tau|,\ \ |W|
 \end{align*}
-This definition relies on several other metrics we need to define.
+This definition relies on several pieces we now need to define.
 
 The set of types in the work set is the union of all types in the left- and right-hand sides of every equality.
 \begin{align*}
-  \text{types}(W) =    &~\{\tau \mid \exists \sigma, \tau \sim \sigma \in W \}\\
-                  \cup &~\{\sigma \mid \exists \tau, \tau \sim \sigma \in W \}
+  \text{types}(W) =    &~\{\tau \mid \tau \sim \sigma \in W \}\\
+                  \cup &~\{\sigma \mid \tau \sim \sigma \in W \}
 \end{align*}
 
-The size of a type is how structurally big it is, determined by number of variables, constants, and applications combined.
+The size of a type is the sum of its number of variable occurrences, constant occurrences, and applications---that is, the number of leaf and internal nodes in its tree structure.
 \begin{align*}
   |\text{\sc t}| &= 1\\
   |\alpha|       &= 1\\
@@ -351,8 +354,8 @@ The size of a type is how structurally big it is, determined by number of variab
 The first of two nontrivial metrics we need to define is \(\text{potentoccs}(\inertset, \tau)\): the number of variable name \emph{occurrences} in \(\tau\) which are mapped by \(\inertset\) to something other than themselves. That is,
 \begin{align*}
   \text{potentoccs}(\inertset, \tau) &= \!\!\!\!\sum_{\substack{\alpha\,\in\,\fv(\tau)\\\alpha\,\ne\,\inertset(\alpha)}}\!\!\!\text{occs}(\alpha, \tau)
-\end{align*}
-\vspace*{-1\baselineskip}
+\end{align*}\\\vspace{-2\baselineskip}\\
+where\vspace{-.5\baselineskip}
 \begin{alignat*}{3}
   &\text{occs}(\alpha, \alpha) &&= 1 &&\\
   &\text{occs}(\alpha, \beta)  &&= 0 &&\\
@@ -360,15 +363,23 @@ The first of two nontrivial metrics we need to define is \(\text{potentoccs}(\in
   &\text{occs}(\alpha, \tau\,\sigma) &&= \text{occs}(\alpha, \tau) + \text{occs}(\alpha, \sigma) &&
 \end{alignat*}
 
-The second nontrivial metric is \(\text{inertvars}(\inertset, \tau)\): the number of \emph{distinct} variables mentioned anywhere (i.e. in \(W\) or in the image of \(\inertset\) over \(W\)) which are mapped by \(\inertset\) to themselves.\footnote{Make sure to contrast \(\text{inertvars}(\inertset, \tau)\) with \(\text{potentoccs}(\inertset, \tau)\); the former counts distinct variables reflexively mapped; the latter counts variable name occurrences irreflexively mapped.}
-
-
+The second nontrivial metric is \(\text{inertvars}(\inertset, \tau)\): the number of \emph{distinct} variables mentioned anywhere (i.e. in \(W\) or in the image of \(\inertset\) over \(W\)) which are mapped by \(\inertset\) to themselves.\footnote{Make sure to keep in mind the contrast between \(\text{potentoccs}(\inertset, \tau)\) and \(\text{inertvars}(\inertset, \tau)\); the former counts irreflexively mapped variable name occurrences in the work set only; the latter counts reflexively mapped distinct variable names anywhere.}
+\begin{align*}
+  \text{inertvars}(\inertset, W) = \big|\thinthinspace\text{allvars}(\inertset, W) \cap \{\alpha \mid \alpha = \inertset(\alpha)\}\big|
+\end{align*}\\\vspace{-2\baselineskip}\\
+where\vspace{-.5\baselineskip}
+\begin{alignat*}{2}
+  \text{allvars}(\inertset, W) &= &&\fv\!\left[\text{types}(W)\right]\\
+                               &\,\cup\,\inertset\big[&&\fv\!\left[\text{types}(W)\right]\!\big]
+\end{alignat*}
 
 % Size only increases when we rewrite with inert set, which decreases irrefloccs occurrences
 % If no rewriting happens, size can only decrease or stay the same
 % If size stays the same (that is, no leftovers), work set cardinality decreases... except when we kick out in these circumstances, it stays the same.
 
 % THE KEY: Kicking out is equivalent to kicking out after rewriting with new inert set! This means that in kicking-out circumstances, we decrease the irrefloccs metric, since we trade an (a |-> t) for some (r ~ s) where neither r nor s mention a. The actual algorithm defers this rewriting until the kicked-out item is reprocessed, but these two orderings are equivalent (just, one is easier to reason about).
+
+% Note that this reasoning means that the "weird" kick out rule that I have not included in this document shouldn't prevent termination (??), but is not necessary. (Is it? Hm.)
 
 \subsection{Completeness}
 
