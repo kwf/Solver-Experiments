@@ -22,6 +22,8 @@
 \newcommand{\admit}{{\color{red}\bf admit}}
 \newcommand{\Admitted}{{\color{red}\bf Admitted}}
 
+\newcommand{\kwf}[1]{{\color{blue}KWF: #1}}
+
 \usepackage{thmtools}
 \declaretheorem[numberwithin=section]{theorem}
 \declaretheorem[sibling=theorem]{lemma}
@@ -40,9 +42,9 @@ When in the course of computational events it becomes necessary for one typechec
 
 First, we \emph{generate} a set of constraints by processing the program and its annotations. There are two kinds of constraints we discover in this process: \textsc{given} constraints---things we know are true---and \textsc{wanted} constraints---things we need to be true for a program to typecheck. A piece of code \(f\) that is only type-correct under a certain constraint \(c\) has \(c\) as a \textsc{given} constraint when we typecheck its insides. A piece of code calling \(f\) will have \(c\) as a \textsc{wanted} constraint.
 
-What kinds of ``things'' can constraints talk about? In GHC, a lot of things: type equalities, but also typeclass instances, type family equations, functional dependencies, and more. To simplify the initial discussion, we'll focus for right now on just a treatment of type equalities. That is to say, every constraint we consider here is of the form \(\tau \sim \sigma\), where \(\tau\) and \(\sigma\) are types and \(\sim\) is nominal type equality. (We will extend this treatment to representational equality later, but not now.)
+What kinds of ``things'' can constraints talk about? In GHC, a lot of things: type equalities, but also typeclass instances, type family equations, functional dependencies, and more. To simplify the initial discussion, we'll focus for right now on just a treatment of type equalities. That is to say, every constraint we consider here is of the form \(\tau \sim \sigma\), where \(\tau\) and \(\sigma\) are types and \(\sim\) is nominal type equality. (We will extend this treatment to representational equality later.)
 
-Second, we \emph{solve} the constraint sets we generated. A successful solution to a constraint solving problem means that we can deduce that the conjunction of all the given constraints implies each wanted constraint. Algorithms like the one in GHC do this in an iterative, stateful way. When we find out that a \textsc{wanted} constraint is satisfied, we remove it from consideration. (We elide here a discussion of producing evidence for equalities, which is another important function of the constraint solver but is not essential to a discussion of equality constraints.) A successful run of the solver means that we terminate in a state where we no longer have any \textsc{wanted} constraints left to solve. An unsuccessful run of the solver means that we terminate, having discovered that one or more {\textsc{wanted}}s are unsatisfiable.\\
+Second, we \emph{solve} the constraint sets we generated. A successful solution to a constraint solving problem means that we can deduce that the conjunction of all the given constraints implies each wanted constraint. Algorithms like the one in GHC do this in an iterative, stateful way. When we find out that a \textsc{wanted} constraint is satisfied, we remove it from consideration. (We elide here a discussion of producing evidence for equalities, which is another important function of the constraint solver but is not essential to a discussion of equality constraints.) A successful run of the solver means that we terminate in a state where we no longer have any \textsc{wanted} constraints left to solve. An unsuccessful run of the solver means that we terminate, having discovered that one or more {\textsc{wanted}}s are unprovable assuming merely the {\sc given}s.\\
 
 \textbf{Aside:} Additionally, we would like to put in a good-faith effort to detect contradictions in the set of \textsc{given} constraints, because this gives the user earlier warning that they have written nonsense---but we will never run unsound code if we fail to report such contradictions, since code with unsatisfiable preconditions can never be run.\\
 
@@ -53,13 +55,35 @@ I claim that a constraint solver does the right thing if, for all inputs, it
 \item always finishes processing in bounded time \textbf{[termination]}
 \end{itemize}
 
-We shall try to prove that these properties hold for (some model of) GHC's constraint solver.
+We shall try to prove that these properties hold for (some model of) GHC's constraint solver.\\
+
+\noindent\textbf{Note:} I have not yet taken any great pains in this document to stress where my presentation of types, constraints, equalities, and solving algorithms is dramatically simplified or altered from how these things are in GHC. This is an evolving document, growing in the direction of closer fidelity to reality, but presently quite far from it. So if you find yourself thinking, ``That's not how it works!'' you're almost certainly right. :)
 
 \section{Substitutions}
 
-Constraint solvers like GHC's process an input set of constraints by iteratively constructing a \emph{substitution} over types. This is called the \emph{inert set}---as we will see later, it is so called because its fixed point maps all variables to types over which the inert set itself is \emph{inert} (that is, idempotent on all contained type variables). The opposite of \emph{inert}, by the way, is \emph{potent}.
+One way to solve constraints is by processing the finite input set of {\sc given} equality constraints \(\{\tau \sim \sigma, \rho \sim \pi \dots\}\) to iteratively construct a \emph{substitution} over types. This is called the inert set---as we will see later, it is so called because its fixed point maps all variables to types over which the inert set itself is \emph{inert} (that is, idempotent on all contained type variables). The opposite of inert, by the way, is \emph{potent}.
 
-A \emph{substitution} is, abstractly, a total function from \emph{type variables} to \emph{types}. We can lift a substitution to be a function from \emph{types} to \emph{types} by uniformly applying it to every type variable in a given type. We will abuse notation in this way, by writing for a substitution \(S\) both \(S(\alpha)\) and \(S(\tau)\).
+To write specifically about such an algorithm, we must be precise about what grammar describes our types. Our types take the form
+\begin{equation*}
+  \tau ::= \text{\sc t} \mid \alpha \mid \tau\ \tau
+\end{equation*}
+where we write \(\tau, \sigma, \rho, \pi\) for types, \(\alpha, \beta, \gamma\) for type variables, and {\sc t}, {\sc s} for ground types (constants) like Int, List, etc. We will extend this grammar later to include type-level functions.
+
+A substitution is, abstractly, a total function from type variables to types. We can lift a substitution to be a function from \emph{types} to \emph{types} by uniformly applying it to every type variable in a given type. We will abuse notation in this way, by writing for a substitution \(S\) both \(S(\alpha)\) and \(S(\tau)\).
+\begin{align*}
+  S(\text{\sc t}) &= \text{\sc t}\\
+  S(\alpha)       &= S(\alpha) && \text{(\(S\) here used as function on type variables)}\\
+  S(\sigma\,\rho) &= S(\sigma)\,S(\rho)
+\end{align*}
+
+We also wish to distinguish between mere \emph{equalities} \((\tau \sim \sigma)\) and \emph{atomic rewrites} \([\alpha \mapsto \tau]\). The latter of these can be given meaning as pointwise alterations of substitutions.
+\begin{equation*}
+  S[\alpha \mapsto \tau](\beta) =
+  \begin{cases}
+    \tau & \text{if } \beta = \alpha\\
+    S(\beta) & \text{otherwise}
+  \end{cases}
+\end{equation*}
 
 Substitutions can have various properties which are of interest to us in this discussion. To distinguish between equality of \emph{representations} of substitutions and \emph{extensional} equality of substitutions-as-functions, we write \(=\) for the former and \(\approx\) for the latter. That is, \(S \approx T \triangleq \forall \alpha, S(\alpha) = T(\alpha)\). (Here, equality on types is exact syntactic equality, with no notion of \(\alpha\)-equivalence.)
 
@@ -70,8 +94,6 @@ Substitutions can have various properties which are of interest to us in this di
 \item[Strong fixed point:] \(S\) has a strong fixed point if \(\exists n, \forall \alpha, S^n(\alpha) = S^{n + 1}(\alpha)\) (an equivalent statement to \(\exists n, S^n \approx S^{n + 1}\))
 \item[Idempotence:] \(S\) is idempotent if \(S \approx S \circ S\)
 \end{description}
-
-\newpage
 
 \begin{lemma}
   \label{lemma:strong-weak}
@@ -92,7 +114,7 @@ Substitutions can have various properties which are of interest to us in this di
 \begin{proof}
   In the forward direction, we consider the set of type variables \(V\) on which an acyclic finite substitution \(S\) ``acts,'' \(V = \{\alpha \mid S(\alpha) \ne \alpha\}\). We show by induction that for a given \(\alpha \in V\), the greatest \(n\) for which \(S^n(\alpha) \ne S^{n + 1}(\alpha)\) is at most \(|V|\), which immediately gives us the strong fixed point property.
 
-  By acyclicity, we know that for any \(\alpha \in V\), \(\alpha\) will not be present in the free variables of \(S^n(\alpha)\), for any \(n\) we choose. Thus, \(S^{n + 1}(\alpha)\) must be equivalent to \((S[\alpha \mapsto \alpha])^n(S(\alpha))\), since acyclicity tells us that \(\alpha\) will not be encountered again after we substitute for it.\footnote{A note on notation: we write \(S[\alpha \mapsto \tau]\) to denote the function equal to \(S(\beta)\) when \(\beta \ne \alpha\), and equal to \(\tau\) when \(\beta = \alpha\).} For all \(\alpha \in V\), \(S[\alpha \mapsto \alpha]\) acts on exactly one fewer variable: \(\alpha\). Thus, every application of \(S\) leaves one less potential variable to be rewritten, and since \(V\) is finite, we will run out of variables to rewrite in at most \(|V|\) steps.
+  By acyclicity, we know that for any \(\alpha \in V\), \(\alpha\) will not be present in the free variables of \(S^n(\alpha)\), for any \(n\) we choose. Thus, \(S^{n + 1}(\alpha)\) must be equivalent to \((S[\alpha \mapsto \alpha])^n(S(\alpha))\), since acyclicity tells us that \(\alpha\) will not be encountered again after we substitute for it. For all \(\alpha \in V\), \(S[\alpha \mapsto \alpha]\) acts on exactly one fewer variable: \(\alpha\). Thus, every application of \(S\) leaves one less potential variable to be rewritten, and since \(V\) is finite, we will run out of variables to rewrite in at most \(|V|\) steps.
 
   In the reverse direction, we consider a finite substitution that contains a cycle on a type variable \(\alpha\). This means that \(S(\alpha) \ne \alpha\) and for some \(m > 0\), \(S^m(\alpha)\) mentions \(\alpha\). We therefore know that \(S^{nm}(\alpha)\) must mention \(\alpha\), because of this \(m\)-length cycle on \(\alpha\). And since we further assumed that \(S(\alpha) \ne \alpha\), we know \(S^{nm}(\alpha) \ne S^{nm + 1}(\alpha)\). But since \(S\) supposedly has a strong fixed point of size \(n\), it must be that \(S^{nm}(\alpha) = S^{nm + 1}(\alpha)\), a contradiction.
 \end{proof}
@@ -122,7 +144,7 @@ We define an \emph{atomic rewrite} to be a pair \((\alpha, \tau)\) of a type var
 
 Like our abstract treatment of substitutions, we may also lift this total function on type variables to one on types.
 
-We will use properties like ``acyclic,'' ``idempotent,'' etc. freely when discussing concrete substitutions. These statements should be interpreted to refer to the functional interpretation of the substitution.
+We will use properties like ``acyclic,'' ``idempotent,'' etc. freely when discussing concrete substitutions. These statements should be interpreted to refer to the functional interpretation of the substitution. Most of the time, however, we can discuss substitutions solely in terms of their ``API'' as total functions. What's nice about this is that by respecting this interface, we get functionality for free!
 
 \begin{corollary}
   If \(C\) is acyclic, then \(C^{|C|}\) is idempotent.
@@ -167,10 +189,15 @@ For a given ``work item'' \((\alpha \sim \tau)\), we may insert it into the iner
 \item[(T3)] \(\alpha \notin \fv(\tau)\)
 \end{description}
 
-We show that if these conditions are met, an inert set \(S[\alpha \mapsto \tau]\) is still acyclic, and thus has a strong fixed point.
+\begin{lemma}
+  \label{lemma:augment-sound}
+  For a finite acyclic substitution \(S\) and atomic rewrite \([\alpha \mapsto \tau]\), if \(S^\ast(\alpha) = \alpha\) {\rm (T1)}, \(S^\ast(\tau) = \tau\) {\rm (T2)}, and \(\alpha \notin \fv(\tau)\) {\rm (T3)}, then \(S[\alpha \mapsto \tau]\) is finite and acyclic.
+\end{lemma}
 
 \begin{proof}
-  Suppose not, that while \(S\) is acyclic and T1, T2 hold of \((\alpha \sim \tau)\), there is a cycle in \(S[\alpha \mapsto \tau]\). Any such cycle must involve the atomic substitution \(\alpha \mapsto \tau\), as otherwise it would exist in \(S\). This means that there must be a cycle on \(\alpha\). By T3, we know that such a cycle requires some free variable in \(\tau\) to be mapped by \(S^\ast\) to a type with \(\alpha\) as a free variable (this relies on functionality of \(S\)?). Yet by T2, we know that \(S^\ast\) is the identity on \(\tau\), which means that it cannot map any variable in \(\tau\) to \(\alpha\).
+  If \(S\) is finite, then adding a single element to its domain can at most cause the nonreflexive portion of its domain to increase by one element. Thus, \(S[\alpha \mapsto \tau]\) is finite.
+
+  As for acyclicity, suppose that while \(S\) is acyclic and T1, T2, T3 hold of \([\alpha \mapsto \tau]\), there is a cycle in \(S[\alpha \mapsto \tau]\). Any such cycle must involve the atomic substitution \(\alpha \mapsto \tau\), as otherwise it would exist in \(S\). This means that there must be a cycle on \(\alpha\). By T3, we know that such a cycle requires some free variable in \(\tau\) to be mapped by \(S^\ast\) to a type with \(\alpha\) as a free variable. Yet by T2, we know that \(S^\ast\) is the identity on \(\tau\), which means that it cannot map any variable in \(\tau\) to \(\alpha\).
 \end{proof}
 
 % a -> b, c -> a, b -> c
@@ -183,32 +210,6 @@ We show that if these conditions are met, an inert set \(S[\alpha \mapsto \tau]\
 We now present a simple algorithm which takes a set of \textsc{given} constraints and a set of \textsc{wanted} constraints, and determines if every \textsc{wanted} constraint is implied by the set of \textsc{given} constraints. We do this in two phases: first, we process the \textsc{given} constraints to form a composite concrete substitution called the ``inert set.'' During this process, we abort the algorithm if we detect obvious inconsistencies in the set of \textsc{given} constraints. If we produce a substitution, we apply it to each \textsc{wanted} in turn, and iff we can rewrite all of them to a reflexive equality (i.e. \(\tau \sim \tau\)), we succeed.
 
 As noted in earlier sections, we would like to show \emph{soundness}, \emph{termination}, and \emph{completeness} of this algorithm.
-
-To write specifically about such an algorithm, we must be precise about what grammar describes our types. Our types take the form
-\begin{equation*}
-  \tau ::= \text{\sc t} \mid \alpha \mid \tau\ \tau
-\end{equation*}
-where we write \(\tau, \sigma, \rho\, \pi\) for types, \(\alpha, \beta, \gamma\) for type variables, and {\sc t}, {\sc s} for ground types (constants) like Int, List, etc. We will extend this grammar later to include type-level functions.
-
-Formally, a substitution is a function over \emph{type variables}. However, we can naturally extend it to work over \emph{types} as well.
-
-\begin{equation*}
-  S(t) =
-  \begin{cases}
-    \text{\sc t} & \text{if } t = \text{\sc t}\\
-    S(\alpha) & \text{if } t = \alpha\\
-    S(\tau)\,S(\sigma) & \text{if } t = \tau\,\sigma
-  \end{cases}
-\end{equation*}
-
-We also wish to distinguish between mere \emph{equalities} \((\tau \sim \sigma)\) and what we've been calling \emph{atomic rewrites} \([\alpha \mapsto \tau]\). The latter of these can be used to alter substitutions directly.
-\begin{equation*}
-  S[\alpha \mapsto \tau](\beta) =
-  \begin{cases}
-    \tau & \text{if } \beta = \alpha\\
-    S(\beta) & \text{otherwise}
-  \end{cases}
-\end{equation*}
 
 The initial sets of \textsc{given} and \textsc{wanted} constraints are equalities between arbitrary types; that is, they are of the form \(\tau \sim \sigma\). We will call the set of yet-to-be-processed \textsc{given} equalities the ``work set'' (deviating from the nomenclature in GHC to emphasize that we will assume nothing about ordering within this structure). Initially, the work set is the set of \textsc{given} equalities. For each step of the solver, we remove an arbitrary \textsc{given} from the work set and process it. This processing may modify the inert set, and may also produce more \textsc{given} equalities to be deferred for later processing.
 
@@ -320,7 +321,7 @@ Thus, our continued use of \(\inertset^\ast\) as a well-defined substitution is 
   If \(\text{\bf step}(\inertset, W) = \inertset^\prime, W^\prime\) and \(\inertset^\prime(\tau) = \inertset^\prime(\sigma)\), \(W \vdash \tau = \sigma\).
 \end{theorem}
 
-\Admitted.
+\Admitted. \kwf{This should be relatively straightforward---mostly, it's just showing that {\bf canonicalize} respects the congruence rules we expect, mixed with various appeals to transitivity of equality.}
 
 % Because \textbf{leftmost} only generates atomic rewrites which are formed by the application of generativity/injectivity of type constructors over the initial given equalities, it will never hand back an atomic rewrite which disrespects type equality. If the \textsc{given} set is consistent, any transitive closure of such atomic rewrites cannot disrespect any of the provided type equalities.
 
@@ -379,6 +380,8 @@ where\vspace{-.5\baselineskip}
 \begin{alignat*}{2}
   \text{allvars}(\inertset, W) &= &&\bigcup_{n \in \mathbb{N}} (\fv \circ \inertset)^n[\text{types}(W)]
 \end{alignat*}
+
+\newpage
 
 \subsection{A Termination Proof}
 
@@ -483,11 +486,11 @@ We prove that for all \(\inertset, W\), if \(\text{\bf step}(\inertset, W) \ne \
 \subsection{Completeness}
 
 \begin{theorem}
-  \label{theorem:step-sound}
-  If \(\text{\bf step}(\inertset, W) = \inertset^\prime, W^\prime\) and \(W \vdash \tau = \sigma\), then \(\inertset^\prime(\tau) = \inertset^\prime(\sigma)\).
+  \label{theorem:solve-sound}
+  If \(\text{\bf solve}(\inertset, G) = \inertset\) and \(G \vdash \tau = \sigma\), then \(\inertset(\tau) = \inertset(\sigma)\).
 \end{theorem}
 
-\Admitted.
+\Admitted. \kwf{This will be something like showing that the produced substitution is a most general unifier. I haven't figured out quite how to demonstrate this yet.}
 
 \subsection{Correctness}
 
@@ -495,6 +498,6 @@ We prove that for all \(\inertset, W\), if \(\text{\bf step}(\inertset, W) \ne \
   For all sets of {\sc given} equalities \(G\), \(\text{\bf solve}(G)\) terminates in finite time, returning either an error or a finite acyclic substitution \(\inertset\) such that \(\inertset^\ast(\tau) = \inertset^\ast(\sigma)\) if and only if \(G \vdash \tau = \sigma\).
 \end{corollary}
 
-\Admitted.
+\Admitted. \kwf{This is a combination of all the lemmata and theorems above. We will need to prove additional things in order to show that an error is thrown \emph{exactly} when there is a contradiction on ground types provable from the {\sc given}s, or perhaps more modestly, to show that when there is not such a contradiction, an error is not thrown.}
 
 \end{document}
