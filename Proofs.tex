@@ -19,6 +19,9 @@
 
 \newcommand{\fv}{\mathrm{fv}}
 
+\newcommand{\admit}{{\color{red}\bf admit}}
+\newcommand{\Admitted}{{\color{red}\bf Admitted}}
+
 \usepackage{thmtools}
 \declaretheorem[numberwithin=section]{theorem}
 \declaretheorem[sibling=theorem]{lemma}
@@ -30,10 +33,6 @@
 
 \begin{document}
 \maketitle
-
-\section{Introduction}
-
-This document is about figuring out how to show that GHC's internal constraint solver does what we all want it to do: the \emph{right thing}. In the process, we'll figure out what we mean by ``the right thing,'' formalize what it is that the existing solver actually does, and (hopefully) prove that these two things are equivalent. I'm writing in a deliberately half-informal style because that's what comes out of my head with least effort, and also, forcing myself to give intuition for what I'm saying is good for everybody involved.
 
 \section{What is a Constraint Solver?}
 
@@ -71,6 +70,8 @@ Substitutions can have various properties which are of interest to us in this di
 \item[Strong fixed point:] \(S\) has a strong fixed point if \(\exists n, \forall \alpha, S^n(\alpha) = S^{n + 1}(\alpha)\) (an equivalent statement to \(\exists n, S^n \approx S^{n + 1}\))
 \item[Idempotence:] \(S\) is idempotent if \(S \approx S \circ S\)
 \end{description}
+
+\newpage
 
 \begin{lemma}
   \label{lemma:strong-weak}
@@ -274,7 +275,7 @@ In practice, a concrete set may be represented as a list, balanced tree, etc.; c
       &~~~~\text{\bf Just}~[\alpha \mapsto \tau] \to
         \begin{cases}
           \inertset,\phantom{[\alpha \mapsto \tau]} W^\prime \cup R & \text{if }\alpha = \tau\\
-          \inertset[\alpha \mapsto \tau], W^\prime \cup R \cup \{\alpha \sim \inertset(\alpha)\} & \text{if }\alpha \ne \tau \land \alpha \notin \fv(\tau)\\
+          \inertset[\alpha \mapsto \tau], W^\prime \cup R \cup \{\tau \sim \inertset^\ast(\alpha)\} & \text{if }\alpha \ne \tau \land \alpha \notin \fv(\tau)\\
           \text{\bf error} & \text{if }\alpha \ne \tau \land \alpha \in \fv(\tau)
         \end{cases}
 \end{align*}
@@ -299,7 +300,10 @@ Soundness of this algorithm can be broken up into two parts:
 \item the result of \textbf{step} never rewrites two type variables to the same type if the \textsc{given} set's  consistently shows them to have have different types
 \end{itemize}
 
-\subsection{Substitutionality}
+\begin{lemma}
+  \label{lemma:step-preserves-substitutionality}
+  For any work set \(W\), and acyclic finite substitution \(S\), if \(\text{\bf step}(S, W) = S^\prime, W^\prime\), then \(S^\prime\) is an acyclic finite substitution.
+\end{lemma}
 
 We previously showed that we can preserve acyclicity by making sure that every augmentation of a substitution \(S[\alpha \mapsto \tau]\) meets three criteria:
 \begin{description}
@@ -311,9 +315,12 @@ These are all ensured by \textbf{step}. For any acyclic substitution \(S\) and t
 
 Thus, our continued use of \(\inertset^\ast\) as a well-defined substitution is justified.
 
-\subsection{Consistency}
+\begin{theorem}
+  \label{theorem:step-sound}
+  If \(\text{\bf step}(\inertset, W) = \inertset^\prime, W^\prime\) and \(\inertset^\prime(\tau) = \inertset^\prime(\sigma)\), \(W \vdash \tau = \sigma\).
+\end{theorem}
 
-
+\Admitted.
 
 % Because \textbf{leftmost} only generates atomic rewrites which are formed by the application of generativity/injectivity of type constructors over the initial given equalities, it will never hand back an atomic rewrite which disrespects type equality. If the \textsc{given} set is consistent, any transitive closure of such atomic rewrites cannot disrespect any of the provided type equalities.
 
@@ -321,20 +328,21 @@ Thus, our continued use of \(\inertset^\ast\) as a well-defined substitution is 
 
 To prove that this \textbf{solve} operation is well-defined, we need to show that such a fixed point always exists. Since the termination condition of the \textbf{solve} operation is when the work set is empty, it suffices to exhibit some bounded-below metric over the pair of the work set and inert set which \textbf{step} causes to decrease with every invocation.
 
-We define our metric \(M : \text{Substitution} \times \text{Set}~\text{Equality} \to \mathbb{N} \times \mathbb{N} \times \mathbb{N} \times \mathbb{N}\) as having a four-dimensional total lexicographic ordering.
+\subsection{A Termination Metric}
 
-That is, if \(M(W_1, \inertset_1) = k_1, l_1, m_1, n_1\) and \(M(W_2, \inertset_2) = k_2, l_2, m_2, n_2\),
+We define our metric \(M : \text{Substitution} \times \text{Set}~\text{Equality} \to \mathbb{N} \times \mathbb{N} \times \mathbb{N} \times \mathbb{N}\) as having a three-dimensional total lexicographic ordering.
+
+That is, if \(M(W_1, \inertset_1) = l_1, m_1, n_1\) and \(M(W_2, \inertset_2) = l_2, m_2, n_2\),
 \begin{alignat*}{1}
-  M(W_1, \inertset_1) < M(W_2, I_2) \iff (&k_1 < k_2)\\
-                     \lor\hspace{1.1em}(&k_1 = k_2 \land l_1 < l_2)\\
-                     \lor\hspace{1.1em}(&k_1 = k_2 \land l_1 = l_2 \land m_1 < m_2)\\
-                     \lor\hspace{1.1em}(&k_1 = k_2 \land l_1 = l_2 \land m_1 = m_2 \land n_1 < n_2)
+  M(W_1, \inertset_1) < M(W_2, I_2) \iff (&l_1 < l_2)\\
+                      \lor\hspace{1.1em}(&l_1 = l_2 \land m_1 < m_2)\\
+                      \lor\hspace{1.1em}(&l_1 = l_2 \land m_1 = m_2 \land n_1 < n_2)
 \end{alignat*}
-We will show: for all \(\inertset, W\), if \(\text{\bf step}(\inertset, W) \ne \inertset, \varnothing\), then \(M(\text{\bf step}(\inertset, W)) < M(\inertset, W)\) (decreasing-ness), and \(M(\inertset, \varnothing) \le M(\inertset, W)\) (well-founded-ness). These two properties are sufficient to demonstrate termination of the algorithm---if \textbf{step} always decreases \(M\) when outside the termination condition, and \(M\) is minimized in the termination condition, then by induction over a well-founded total order, \textbf{solve} takes a finite number of \textbf{step}s before returning an error or a result.
+We will show: for all \(\inertset, W\) if \(W \ne \varnothing\) then \(M(\text{\bf step}(\inertset, W)) < M(\inertset, W)\) (decreasing-ness), and \(M(\inertset, \varnothing) \le M(\inertset, W)\) (well-founded-ness). These two properties are sufficient to demonstrate termination of the algorithm---if \textbf{step} always decreases \(M\) when outside the termination condition, and \(M\) is minimized in the termination condition, then by induction over a well-founded total order, \textbf{solve} takes a finite number of \textbf{step}s before returning an error or a result.
 
-We define our lexicographic metric \(M\) as a quadruple of simpler metrics over the work set and inert set.
+We define our lexicographic metric \(M\) as a triple of simpler metrics over the work set and inert set.
 \begin{align*}
-  M(\inertset, W) = &~\text{inertvars}(\inertset, W), \!\!\!\!\!\sum_{\tau\,\in\,\text{types}(W)}\!\!\!\!\!\!\!\!\text{potentoccs}(\inertset, \tau), \!\!\!\!\!\sum_{\tau\,\in\,\text{types}(W)}\!\!\!\!\!\!\!\!|\tau|,\ \ |W|
+  M(\inertset, W) = &~\text{inertvars}(\inertset, W), \!\!\!\!\!\sum_{\tau\,\in\,\text{types}(W)}\!\!\!\!\!\!\!\!\text{potentoccs}(\inertset, \tau), \!\!\!\!\!\sum_{\tau\,\in\,\text{types}(W)}\!\!\!\!\!\!\!\!|\tau|
 \end{align*}
 This definition relies on several pieces we now need to define.
 
@@ -369,9 +377,94 @@ The second nontrivial metric is \(\text{inertvars}(\inertset, \tau)\): the numbe
 \end{align*}\\\vspace{-2\baselineskip}\\
 where\vspace{-.5\baselineskip}
 \begin{alignat*}{2}
-  \text{allvars}(\inertset, W) &= &&\fv\!\left[\text{types}(W)\right]\\
-                               &\,\cup\,\inertset\big[&&\fv\!\left[\text{types}(W)\right]\!\big]
+  \text{allvars}(\inertset, W) &= &&\bigcup_{n \in \mathbb{N}} (\fv \circ \inertset)^n[\text{types}(W)]
 \end{alignat*}
+
+\subsection{A Termination Proof}
+
+We prove that for all \(\inertset, W\), if \(\text{\bf step}(\inertset, W) \ne \inertset, \varnothing\), then \(M(\text{\bf step}(\inertset, W)) < M(\inertset, W)\) (decreasing-ness), and \(M(\inertset, \varnothing) \le M(\inertset, W)\) (well-founded-ness).
+
+\begin{theorem}
+  \label{theorem:well-founded-step}
+  For all  \(\inertset\) and \(W\!\),  \(M(\inertset, \varnothing) \le M(\inertset, W)\).
+\end{theorem}
+
+\begin{proof}
+  By the definition of our metric \(M\), we show piecewise that for any \(\inertset\),  \(M(\inertset, \varnothing) = 0, 0, 0\).
+  \begin{itemize}
+    \item We know that \(\text{types}(\varnothing) = \varnothing\), and therefore that \(\text{allvars}(\inertset, \varnothing) = \varnothing\), and so \(\text{inertvars}(\inertset, \varnothing) = |\text{allvars}(\varnothing) \cap \{\alpha \mid \alpha = \inertset(\alpha)\}| = |\varnothing \cap \{\alpha \mid \alpha = \inertset(\alpha)\}| = 0\).
+    \item As we stated above, \(\text{types}(\varnothing) = \varnothing\), so \(\sum_{\tau\,\in\,\text{types}(W)}\text{potentoccs}(\inertset, \tau) = 0\).
+    \item By the same token, \(\sum_{\tau\,\in\,\text{types}(W)}|\tau| = 0\).
+  \end{itemize}
+  None of these measures can decrease below 0, as the first and third are (sums of) sizes of sets, and the second is the sum over a function whose codomain is non-negative.
+\end{proof}
+
+\begin{theorem}
+  \label{theorem:decreasing-step}
+  For all \(\inertset\) and \(W\!\), if \(W \ne \varnothing\) then \(M(\text{\bf step}(\inertset, W)) < M(\inertset, W)\).
+\end{theorem}
+
+\begin{proof}
+  We show this by case analysis on the evaluation of \(\text{\bf step}\). We ignore all cases where we return an \textbf{error}, because these cases trivially terminate.
+
+  If \(\text{\bf choice}(W) = \text{\bf Nothing}\), then by the specification of \(\text{\bf choice}\), \(w = \varnothing\), which is a contradiction of the hypothesis \(W \ne \varnothing\). Thus, we know that \(\text{\bf choice}(W) = \text{\bf Just}~(\sigma \sim \rho, W^\prime)\), where \(\sigma \sim \rho \in W\), \(\sigma \sim \rho \notin W^\prime\), and \(\{\sigma \sim \rho\} \cup W^\prime = W\).
+
+  We let \(mr, R = \text{\bf canonicalize}(\inertset^\ast(\sigma) \sim \inertset^\ast(\rho))\), proceeding by cases on \(mr\).
+
+  \begin{itemize}
+
+  \item If \(mr = \text{\bf Nothing}\) \emph{or} if  \(mr = \text{\bf Just}~[\alpha \sim \alpha]\), then we return \(\inertset\) unchanged and a new work set consisting of \(W^\prime \cup R\). By case analysis on \(R\), we find:
+
+    \begin{itemize}
+
+      \item In the case where \(R = \varnothing\), we know by the specification of \(\textbf{choice}\) that \(W^\prime \cup R = W \setminus \{\sigma \sim \rho\}\), and therefore that the cumulative size of all types in the work set decreases (our third measure). To justify the appeal to our third measure, we must show that our first two measures are nonincreasing in this case.
+
+      \begin{itemize}
+
+        \item The number of potent occurrences in the work set cannot have increased, because in this scenario, we have either discarded an equality \(\text{\sc t} \sim \text{\sc t}\) (which contains no variables) or an equality \(\alpha \sim \alpha\) (which either decreases the number of potent occurrences in the work list or does not change it, depending on whether \(\alpha\) is potent).
+
+        \item By the same token, the number of inert variables in play cannot increase. In the case of discarding an equality \(\text{\sc t} \sim \text{\sc t}\), no variables are removed from play. If we discard an equality \(\alpha \sim \alpha\), then either this was the last occurrence of \(\alpha\) present (in which case there are fewer inert variables), or it was not (in which case there are the same number of inert variables).
+
+      \end{itemize}
+
+      \item In the case where \(R \ne \varnothing\), we no longer have that \(W^\prime \cup R = W \setminus \{\sigma \sim \rho\}\), so we need to make a slightly subtler argument. We split into two cases, depending on the result of \(\inertset^\ast(\sigma) \sim \inertset^\ast(\rho)\).
+
+      Note that in either case, the number of inert variables cannot increase. By the definition of \(\text{allvars}(\inertset, W)\), for any \(\sigma \sim \tau \in W\), \(\rho \in \{\sigma, \tau\}\), any \(\alpha \in \fv(I^\ast(\rho))\) is already in \(\text{allvars}(\inertset, W)\). Since we do not alter \(\inertset\) in this case, the intersection \(\text{allvars}(\inertset, W) \cap \{\alpha \mid \alpha = \inertset(\alpha)\}\) cannot increase in size.
+
+      \begin{itemize}
+
+        \item If \(\sigma \sim \rho = \inertset^\ast(\sigma) \sim \inertset^\ast(\rho)\), then \(\text{\bf canonicalize}(\inertset^\ast(\sigma) \sim \inertset^\ast(\rho)) = \text{\bf canonicalize}(\sigma \sim \rho)\). By induction on the structure of \(\sigma\) and \(\rho\), if \(\text{\bf Just}~[\alpha \mapsto \alpha], R = \text{\bf canonicalize}(\sigma \sim \rho)\) and \(R \ne \varnothing\), then
+        \begin{equation*}
+          \sum_{\pi\,\in\,\text{types}(R)}\!\!\!\!\!\!\!\!|\pi|\ \ <\ \ |\sigma| + |\rho|
+        \end{equation*}
+        Intuitively, if there are ``leftover'' equalities returned in \(R\), then we must have broken apart at least one type application, which means that this one or more type application can no longer contribute to the size measure.
+
+        The number of potent occurrences cannot increase in this case, because any type variable returned to the work set via \(R\) will already have been fully rewritten to contain only inert variables by the call to \(\inertset^\ast\) before canonicalization.
+
+        \item If \(\sigma \sim \rho \ne \inertset^\ast(\sigma) \sim \inertset^\ast(\rho)\), then the cumulative size of the types in the resultant work set may increase arbitrarily due to rewriting by \(\inertset^\ast\). But this same rewriting guarantees that every type variable in \(R\) must be a fixed point of \(\inertset\), since canonicalize does not introduce type variables (specifically, it does not introduce variables that occur in the nonreflexive domain of the inert set). And in this case, we know nonzero rewriting of some potent type variable previously in the work set has indeed occurred. Therefore, the number of potent occurrences in the work set strictly decreases.
+
+      \end{itemize}
+
+    \end{itemize}
+
+  \item If \(mr = \text{\bf Just}~[\alpha \sim \tau]\) where \(\alpha \ne \tau\) and \(\alpha \notin \fv(\tau)\), then we ``kick out'' an equality back into the work set of the form \([\tau \sim \inertset(\alpha)]\). We proceed by case analysis on whether \(\alpha\) is in the reflexive or non-reflexive portion of the inert set's domain.
+
+    \begin{itemize}
+
+      \item If \(\inertset(\alpha) = \alpha\), then \(\inertset[\alpha \to \tau]\) has one fewer element in its reflexive domain. Because \(\alpha\) must have been present in the transitive closure of \(\inertset\) over the initial work set, the number of inert variables present in the new work set must decrease by exactly one: either because \(\alpha\) is no longer mentioned anywhere in the transitive closure of \(\inertset\), or because \(\alpha\) is mentioned, but it is no longer inert.
+
+      \item If \(\inertset(\alpha) \ne \alpha\), by definition, \(\alpha\) is potent. As a result, the particular occurrence of \(\alpha\) which prompted this augmentation counted toward the number of potent occurrences in the initial work set. By the definition of \(\inertset^\ast\), the equality \(\tau \sim \inertset(\alpha)\) kicked back out to the work list cannot contain any potent occurrences. The potency of all variables remains unchanged, which means that the number of potent occurrences of any variable in the work set strictly decreases.
+
+      At the same time, the number of inert variables may decrease or stay constant, but can never increase, because we only alter the inert set, returning \(\inertset[\alpha \mapsto \tau]\), when \(\alpha \ne \tau\). This means that the number of reflexively mapped elements in the domain of \(\inertset\) cannot increase. As noted earlier, the number of variables in \(\text{allvars}(\inertset, W)\) also cannot increase.
+
+    \end{itemize}
+
+  \end{itemize}
+
+  Therefore, \textbf{step} strictly decreases \(M\) for any inert set and work set.
+\end{proof}
+
+% I've been able to phrase everything in terms of treating the inert set as a mere function -- no concrete operations needed. That's neat.
 
 % Size only increases when we rewrite with inert set, which decreases irrefloccs occurrences
 % If no rewriting happens, size can only decrease or stay the same
@@ -379,8 +472,29 @@ where\vspace{-.5\baselineskip}
 
 % THE KEY: Kicking out is equivalent to kicking out after rewriting with new inert set! This means that in kicking-out circumstances, we decrease the irrefloccs metric, since we trade an (a |-> t) for some (r ~ s) where neither r nor s mention a. The actual algorithm defers this rewriting until the kicked-out item is reprocessed, but these two orderings are equivalent (just, one is easier to reason about).
 
+% WAIT A SECOND. If this is true, then does kicking out (at least, K1 kicking-out) do *anything*? THE FOLLOWING IS FALSE: "We kick out {a ~ I(a)}, but as soon as this is re-drawn from the work set, we turn it into I*(a) ~ I*(I(a)), which is I*(a) ~ I*(a), which will be immediately discarded, as it's just refl."
+
+% ^ The above is wrong. Why? We do kick out (a ~ I(a)), but when we rewrite it, we rewrite it with a *new* I, and in particular a new I that contains a new rewrite for a: t. So this is *actually* equivalent to kicking out the equation t ~ I(a), which is equivalent to kicking out I*(t) ~ I*(a).
+
 % Note that this reasoning means that the "weird" kick out rule that I have not included in this document shouldn't prevent termination (??), but is not necessary. (Is it? Hm.)
 
+% S is M.G.U.: forall S', S'(t1) ~ S'(t2), exists S'', S <> S'' = S'
+
 \subsection{Completeness}
+
+\begin{theorem}
+  \label{theorem:step-sound}
+  If \(\text{\bf step}(\inertset, W) = \inertset^\prime, W^\prime\) and \(W \vdash \tau = \sigma\), then \(\inertset^\prime(\tau) = \inertset^\prime(\sigma)\).
+\end{theorem}
+
+\Admitted.
+
+\subsection{Correctness}
+
+\begin{corollary}
+  For all sets of {\sc given} equalities \(G\), \(\text{\bf solve}(G)\) terminates in finite time, returning either an error or a finite acyclic substitution \(\inertset\) such that \(\inertset^\ast(\tau) = \inertset^\ast(\sigma)\) if and only if \(G \vdash \tau = \sigma\).
+\end{corollary}
+
+\Admitted.
 
 \end{document}
