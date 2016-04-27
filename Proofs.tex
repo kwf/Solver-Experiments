@@ -432,19 +432,19 @@ We prove that for all \(\inertset, W\), if \(\text{\bf step}(\inertset, W) \ne \
 
       \item In the case where \(R \ne \varnothing\), we no longer have that \(W^\prime \cup R = W \setminus \{\sigma \sim \rho\}\), so we need to make a slightly subtler argument. We split into two cases, depending on the result of \(\inertset^\ast(\sigma) \sim \inertset^\ast(\rho)\).
 
-      Note that in either case, the number of inert variables cannot increase. By the definition of \(\text{allvars}(\inertset, W)\), for any \(\sigma \sim \tau \in W\), \(\rho \in \{\sigma, \tau\}\), any \(\alpha \in \fv(I^\ast(\rho))\) is already in \(\text{allvars}(\inertset, W)\). Since we do not alter \(\inertset\) in this case, the intersection \(\text{allvars}(\inertset, W) \cap \{\alpha \mid \alpha = \inertset(\alpha)\}\) cannot increase in size.
+      Note that in either case, the number of inert variables cannot increase. By the definition of \(\text{allvars}(\inertset, W)\), for any \(\tau \sim \sigma \in W\), any \(\alpha \in \fv(I^\ast(\tau)) \cup \fv(I^\ast(\sigma))\) is already in \(\text{allvars}(\inertset, W)\). Since we do not alter \(\inertset\) in this case, the intersection \(\text{allvars}(\inertset, W) \cap \{\alpha \mid \alpha = \inertset(\alpha)\}\) cannot increase in size.
 
       \begin{itemize}
 
-        \item If \(\sigma \sim \rho = \inertset^\ast(\sigma) \sim \inertset^\ast(\rho)\), then \(\text{\bf canonicalize}(\inertset^\ast(\sigma) \sim \inertset^\ast(\rho)) = \text{\bf canonicalize}(\sigma \sim \rho)\). By induction on the structure of \(\sigma\) and \(\rho\), if \(\text{\bf Just}~[\alpha \mapsto \alpha], R = \text{\bf canonicalize}(\sigma \sim \rho)\) and \(R \ne \varnothing\), then
+        \item If \(\tau \sim \sigma = \inertset^\ast(\tau) \sim \inertset^\ast(\sigma)\), then \(\text{\bf canonicalize}(\inertset^\ast(\tau) \sim \inertset^\ast(\sigma)) = \text{\bf canonicalize}(\tau \sim \sigma)\). By induction on the structure of \(\tau\) and \(\sigma\), if \(\text{\bf Just}~[\alpha \mapsto \alpha], R = \text{\bf canonicalize}(\sigma \sim \rho)\) and \(R \ne \varnothing\), then
         \begin{equation*}
-          \sum_{\pi\,\in\,\text{types}(R)}\!\!\!\!\!\!\!\!|\pi|\ \ <\ \ |\sigma| + |\rho|
+          \sum_{\rho\,\in\,\text{types}(R)}\!\!\!\!\!\!\!\!|\rho|\ \ <\ \ |\tau| + |\sigma|
         \end{equation*}
         Intuitively, if there are ``leftover'' equalities returned in \(R\), then we must have broken apart at least one type application, which means that this one or more type application can no longer contribute to the size measure.
 
         The number of potent occurrences cannot increase in this case, because any type variable returned to the work set via \(R\) will already have been fully rewritten to contain only inert variables by the call to \(\inertset^\ast\) before canonicalization.
 
-        \item If \(\sigma \sim \rho \ne \inertset^\ast(\sigma) \sim \inertset^\ast(\rho)\), then the cumulative size of the types in the resultant work set may increase arbitrarily due to rewriting by \(\inertset^\ast\). But this same rewriting guarantees that every type variable in \(R\) must be a fixed point of \(\inertset\), since canonicalize does not introduce type variables (specifically, it does not introduce variables that occur in the nonreflexive domain of the inert set). And in this case, we know nonzero rewriting of some potent type variable previously in the work set has indeed occurred. Therefore, the number of potent occurrences in the work set strictly decreases.
+        \item If \(\tau \sim \sigma \ne \inertset^\ast(\tau) \sim \inertset^\ast(\sigma)\), then the cumulative size of the types in the resultant work set may increase arbitrarily due to rewriting by \(\inertset^\ast\). But this same rewriting guarantees that every type variable in \(R\) must be a fixed point of \(\inertset\), since canonicalize does not introduce type variables (specifically, it does not introduce variables that occur in the nonreflexive domain of the inert set). And in this case, we know nonzero rewriting of some potent type variable previously in the work set has indeed occurred. Therefore, the number of potent occurrences in the work set strictly decreases.
 
       \end{itemize}
 
